@@ -1,0 +1,72 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Auth\Controllers;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Auth\AuthenticationException;
+use App\Modules\Auth\Requests\ChangePasswordRequest;
+use App\Modules\Auth\Requests\LoginRequest;
+use App\Modules\Auth\Services\AuthService;
+use App\Modules\Auth\Services\PasswordService;
+use Illuminate\Http\JsonResponse;
+
+class AuthController extends Controller
+{
+    public function __construct(
+        private readonly AuthService $authService,
+        private readonly PasswordService $passwordService,
+    )
+    {
+    }
+
+    public function me(): JsonResponse
+    {
+        $user = request()->user();
+
+        if (!$user) {
+            throw new AuthenticationException('Unauthenticated.');
+        }
+
+        return response()->json([
+            'user' => $user,
+            'roles' => $user->roles()->pluck('slug')->values(),
+        ]);
+    }
+
+    public function login(LoginRequest $request): JsonResponse
+    {
+        try {
+            $result = $this->authService->login(
+                $request->loginIdentifier(),
+                $request->password(),
+                $request->deviceName(),
+                $request->deviceIdentifier(),
+                $request->ip(),
+            );
+        } catch (AuthenticationException $e) {
+            return response()->json([
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Unauthorized',
+            ], 401);
+        }
+
+        return response()->json([
+            'token' => $result['token'],
+            'user' => $result['user'],
+            'must_change_password' => (bool) ($result['user']->must_change_password ?? false),
+        ]);
+    }
+
+    public function changePassword(ChangePasswordRequest $request): JsonResponse
+    {
+        $this->passwordService->changePassword(
+            $request->user(),
+            $request->currentPassword(),
+            $request->newPassword(),
+            $request->ip(),
+        );
+
+        return response()->json(['status' => 'ok']);
+    }
+}

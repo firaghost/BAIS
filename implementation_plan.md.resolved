@@ -1,0 +1,230 @@
+# Flutter Attendance Mobile App — Implementation Plan
+
+Build a production-ready Flutter mobile app that integrates with the existing BAIS Laravel backend, matching the Figma design precisely across 6 screens.
+
+## API Contract Summary (existing backend)
+
+| Method | Endpoint | Auth | Body / Params |
+|--------|----------|------|---------------|
+| POST | `/api/auth/login` | Public | [login](file:///d:/Projects/BAIS/app/Modules/Auth/Controllers/AuthController.php#23-39) or `email`, [password](file:///d:/Projects/BAIS/app/Modules/Auth/Requests/LoginRequest.php#63-67), `device_identifier`, `device_name` |
+| POST | `/api/auth/change-password` | Bearer | `current_password`, `new_password` |
+| POST | `/api/attendance/check-in` | Bearer | `branch_id`, [latitude](file:///d:/Projects/BAIS/app/Modules/Attendance/Requests/AttendanceCheckInRequest.php#30-34), [longitude](file:///d:/Projects/BAIS/app/Modules/Attendance/Requests/AttendanceCheckInRequest.php#35-39) |
+| POST | `/api/attendance/check-out` | Bearer | `branch_id` |
+| GET | `/api/attendance/history` | Bearer | [from](file:///d:/Projects/BAIS/app/Modules/Attendance/Requests/AttendanceHistoryRequest.php#27-33), [to](file:///d:/Projects/BAIS/app/Modules/Leaves/Controllers/LeaveRequestController.php#44-52), [status](file:///d:/Projects/BAIS/app/Modules/Attendance/Requests/AttendanceHistoryRequest.php#41-47), `branch_id`, `per_page` |
+| GET | `/api/shifts` | Bearer | — |
+| GET | `/api/leaves/balance` | Bearer | `year` |
+| GET | `/api/leaves/requests` | Bearer | — |
+| POST | `/api/leaves/requests` | Bearer | `leave_type`, `start_date`, `end_date`, `reason` |
+| GET | `/api/employees` | Bearer | — |
+
+---
+
+## Proposed Changes
+
+### [NEW] Flutter Project — `d:\Projects\BAIS\mobile`
+
+#### Project Structure
+```
+mobile/
+├── lib/
+│   ├── main.dart                          # App entry + providers
+│   ├── config/
+│   │   └── api_config.dart                # Base URL, timeout constants
+│   ├── models/
+│   │   ├── user.dart                      # User + Employee merged model
+│   │   ├── attendance_log.dart            # AttendanceLog model
+│   │   ├── shift.dart                     # Shift model
+│   │   ├── branch.dart                    # Branch model (lat/lng/radius)
+│   │   └── leave_request.dart             # LeaveRequest model
+│   ├── services/
+│   │   ├── api_service.dart               # HTTP client with Sanctum Bearer tokens
+│   │   ├── auth_service.dart              # Login, token storage, logout
+│   │   ├── attendance_service.dart        # Check-in/out, history
+│   │   ├── shift_service.dart             # Fetch shifts
+│   │   └── leave_service.dart             # Balance, create/list requests
+│   ├── providers/
+│   │   ├── auth_provider.dart             # Auth state (ChangeNotifier)
+│   │   ├── attendance_provider.dart       # Attendance state
+│   │   └── leave_provider.dart            # Leave state
+│   ├── screens/
+│   │   ├── login_screen.dart              # Employee ID + Password login
+│   │   ├── dashboard_screen.dart          # Home with shift timer, check-in, map
+│   │   ├── schedule_screen.dart           # Calendar week strip + shift cards
+│   │   ├── history_screen.dart            # Month/status filter + log cards
+│   │   ├── leave_screen.dart              # Balance + leave request form
+│   │   └── profile_screen.dart            # Employee info
+│   ├── widgets/
+│   │   ├── bottom_nav_bar.dart            # 5-tab bottom navigation
+│   │   ├── shift_countdown.dart           # Circular countdown timer
+│   │   ├── weekly_summary_card.dart       # Hours worked + days present
+│   │   ├── attendance_card.dart           # History log card
+│   │   ├── schedule_card.dart             # Shift card for schedule
+│   │   └── leave_balance_card.dart        # Annual/Sick leave cards
+│   └── theme/
+│       └── app_theme.dart                 # Colors, typography, component themes
+├── pubspec.yaml
+└── android/app/src/main/AndroidManifest.xml  # Permissions
+```
+
+---
+
+### 1. Core Layer
+
+#### [NEW] `api_config.dart`
+- `baseUrl` constant (configurable, defaults to `http://10.0.2.2:8000/api` for emulator)
+
+#### [NEW] `api_service.dart`
+- Singleton HTTP client using `http` package
+- Auto-attach `Authorization: Bearer <token>` header
+- JSON request/response helpers (`get`, `post`, `put`, `delete`)
+- Token stored/loaded from `SharedPreferences`
+
+#### [NEW] Models (`user.dart`, `attendance_log.dart`, `shift.dart`, `branch.dart`, `leave_request.dart`)
+- `fromJson` factories matching exact Laravel response shapes
+- `toJson` for request payloads
+
+---
+
+### 2. Auth Flow
+
+#### [NEW] `auth_service.dart`
+- [login(login, password, deviceIdentifier, deviceName)](file:///d:/Projects/BAIS/app/Modules/Auth/Controllers/AuthController.php#23-39) → POST `/auth/login`
+- Store token + user in SharedPreferences
+- `logout()` → clear token
+
+#### [NEW] `auth_provider.dart` (ChangeNotifier)
+- `isAuthenticated`, [user](file:///d:/Projects/BAIS/app/Modules/Attendance/Models/AttendanceLog.php#42-46), `token`
+- Auto-load token on app start
+- Notify listeners on login/logout
+
+#### [NEW] `login_screen.dart`
+Design from Figma:
+- Bank icon + "Employee Login" title
+- Employee ID field (prefixed icon)
+- Password field (with visibility toggle)
+- "Forgot Password?" link
+- Blue "Secure Login" button
+- "ALTERNATIVE ACCESS" divider + Biometric Login button
+- "Device Authorized" chip at bottom
+- "Real-time Sync Active" status indicator
+
+---
+
+### 3. Dashboard Screen
+
+#### [NEW] `dashboard_screen.dart`
+Design from Figma:
+- **App bar**: Avatar + "Dashboard" + notification bell
+- **Greeting card** (dark blue): role, "Good Morning, Name", shift start info, "On Time" badge
+- **Shift section**: "Morning Shift 08:30 AM - 05:00 PM" + circular countdown timer
+- **Check In / Check Out button** (blue, full-width)
+- **Map preview**: Shows branch location with "Head Office" label + "In Range" indicator
+- **Weekly Summary**: Hours worked + Days present cards
+
+#### [NEW] `shift_countdown.dart`
+- Circular progress indicator with countdown to shift start
+- Updates every second using Timer
+
+---
+
+### 4. Schedule Screen
+
+#### [NEW] `schedule_screen.dart`
+Design from Figma:
+- **App bar**: Avatar + "Schedule" + notification bell
+- **Month/Year header** with prev/next arrows
+- **Week day strip**: Mon-Fri with selected day highlighted (blue circle)
+- **Map preview** of branch
+- **Shift cards grouped by date** showing:
+  - Shift type label (Morning/Afternoon, color-coded)
+  - Time range + duration
+  - Branch name + address
+  - Shift supervisor info
+
+---
+
+### 5. History Screen
+
+#### [NEW] `history_screen.dart`
+Design from Figma:
+- **App bar**: Avatar + "History" + notification bell
+- **Filters row**: Month dropdown + Status dropdown
+- **Attendance log cards** each showing:
+  - Day of week + date (left column)
+  - Shift type + branch name
+  - Status badge (Present=green, Late=red, Half Day=orange)
+  - Check In time, Check Out time, Total Hours
+
+Calls `GET /attendance/history` with [from](file:///d:/Projects/BAIS/app/Modules/Attendance/Requests/AttendanceHistoryRequest.php#27-33)/[to](file:///d:/Projects/BAIS/app/Modules/Leaves/Controllers/LeaveRequestController.php#44-52)/[status](file:///d:/Projects/BAIS/app/Modules/Attendance/Requests/AttendanceHistoryRequest.php#41-47) filters.
+
+---
+
+### 6. Leave Request Screen
+
+#### [NEW] `leave_screen.dart`
+Design from Figma:
+- **App bar**: Avatar + "Leave Request" + notification bell
+- **Balance cards**: Annual Leave (blue border) + Sick Leave (orange border) with days available
+- **Leave form card**:
+  - Leave Type dropdown (annual, sick, personal, other)
+  - Start Date + End Date pickers
+  - Total days calculated display
+  - Reason textarea
+  - Blue "Submit Request" button
+
+Calls `GET /leaves/balance` for balances, `POST /leaves/requests` for submission.
+
+---
+
+### 7. Profile Screen
+
+#### [NEW] `profile_screen.dart`
+- Employee info display (name, employee code, department, job title, branch)
+- Change password option
+- Logout button
+
+---
+
+### 8. Bottom Navigation + App Shell
+
+#### [NEW] `bottom_nav_bar.dart`
+5 tabs: Home, Schedule, History, Leave, Profile — matching Figma icons and colors.
+
+#### [NEW] `main.dart`
+- `MultiProvider` wrapping the app with `AuthProvider`, `AttendanceProvider`, `LeaveProvider`
+- `MaterialApp` with custom theme
+- Auth gate: show LoginScreen or MainShell based on auth state
+
+---
+
+### 9. Theme
+
+#### [NEW] `app_theme.dart`
+- Primary: `#3F51B5` (Indigo/Navy blue from design)
+- Background: `#F5F6FA` (light grey)
+- Card: `#FFFFFF`
+- Success: `#4CAF50`, Error: `#F44336`, Warning: `#FF9800`
+- Font: Inter/Roboto
+- Rounded cards with subtle shadows
+
+---
+
+## Verification Plan
+
+### Automated — Build APK
+```bash
+cd d:\Projects\BAIS\mobile
+flutter build apk --debug
+```
+The APK must compile successfully.
+
+### Manual Verification (requires running Laravel backend)
+1. **Login flow**: Launch app → enter employee ID + password → verify token is stored and dashboard loads
+2. **Dashboard**: Verify greeting shows logged-in user's name, shift info loads, GPS location is fetched
+3. **Check-in**: Tap "Check In" within branch geofence → verify 201 response
+4. **History**: Navigate to History tab → verify attendance logs load with correct dates/status
+5. **Leave**: Navigate to Leave tab → verify balance loads → fill form → submit → verify 201 response
+6. **Schedule**: Navigate to Schedule tab → verify shifts load for the selected week
+
+> [!IMPORTANT]
+> The backend must be running at `http://10.0.2.2:8000` (Android emulator) or the device's network IP for real device testing. Seed data (employees, branches, shifts) must exist in the database.

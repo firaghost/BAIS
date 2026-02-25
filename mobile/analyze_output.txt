@@ -1,0 +1,9 @@
+Analyzing mobile...                                             
+
+   info - Unnecessary use of string interpolation - lib\models\user.dart:70:47 - unnecessary_string_interpolations
+   info - 'desiredAccuracy' is deprecated and shouldn't be used. use settings parameter with AndroidSettings, AppleSettings, WebSettings, or LocationSettings - lib\screens\dashboard_screen.dart:79:9 - deprecated_member_use
+   info - Unnecessary use of string interpolation - lib\screens\schedule_screen.dart:266:23 - unnecessary_string_interpolations
+warning - Unused import: '../models/branch.dart' - lib\services\shift_service.dart:2:8 - unused_import
+  error - The name 'MyApp' isn't a class - test\widget_test.dart:16:35 - creation_with_non_type
+
+5 issues found. (ran in 5.4s)

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <title>{{ config('app.name', 'BAIS') }}</title>
+
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        >
+
+        @php
+            $hotPath = public_path('hot');
+            $manifestPath = public_path('build/manifest.json');
+        @endphp
+
+        @if (is_file($hotPath))
+            @viteReactRefresh
+            @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @elseif (is_file($manifestPath))
+            @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @else
+            <script>
+                window.location.replace('http://localhost:5173');
+            </script>
+        @endif
+    </head>
+    <body class="min-h-screen bg-slate-50 text-slate-900">
+        <div id="app"></div>
+    </body>
+</html>
