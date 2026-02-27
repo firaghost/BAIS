@@ -36,3 +36,47 @@ export async function safeGet(url, config) {
         return { ok: false, status, error: data ?? String(err) };
     }
 }
+
+export async function safePost(url, payload, config) {
+    try {
+        const res = await api.post(url, payload, config);
+        return { ok: true, data: res.data };
+    } catch (err) {
+        const status = err?.response?.status;
+        const data = err?.response?.data;
+        return { ok: false, status, error: data ?? String(err) };
+    }
+}
+
+export async function safePut(url, payload, config) {
+    try {
+        const res = await api.put(url, payload, config);
+        return { ok: true, data: res.data };
+    } catch (err) {
+        const status = err?.response?.status;
+        const data = err?.response?.data;
+        return { ok: false, status, error: data ?? String(err) };
+    }
+}
+
+export async function safePatch(url, payload, config) {
+    try {
+        const res = await api.patch(url, payload, config);
+        return { ok: true, data: res.data };
+    } catch (err) {
+        const status = err?.response?.status;
+        const data = err?.response?.data;
+        return { ok: false, status, error: data ?? String(err) };
+    }
+}
+
+export async function safeDelete(url, config) {
+    try {
+        const res = await api.delete(url, config);
+        return { ok: true, data: res.data };
+    } catch (err) {
+        const status = err?.response?.status;
+        const data = err?.response?.data;
+        return { ok: false, status, error: data ?? String(err) };
+    }
+}

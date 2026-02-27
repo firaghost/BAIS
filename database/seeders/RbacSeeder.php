@@ -18,6 +18,21 @@ class RbacSeeder extends Seeder
             ['name' => 'View audit logs', 'slug' => 'audit.view'],
         );
 
+        $reportsView = Permission::query()->firstOrCreate(
+            ['slug' => 'reports.view'],
+            ['name' => 'View reports & analytics', 'slug' => 'reports.view'],
+        );
+
+        $reportsRun = Permission::query()->firstOrCreate(
+            ['slug' => 'reports.run'],
+            ['name' => 'Generate reports', 'slug' => 'reports.run'],
+        );
+
+        $reportsExport = Permission::query()->firstOrCreate(
+            ['slug' => 'reports.export'],
+            ['name' => 'Export reports', 'slug' => 'reports.export'],
+        );
+
         $branchesView = Permission::query()->firstOrCreate(
             ['slug' => 'branches.view'],
             ['name' => 'View branches', 'slug' => 'branches.view'],
@@ -138,14 +153,29 @@ class RbacSeeder extends Seeder
             ['name' => 'Manage employees', 'slug' => 'employees.manage'],
         );
 
+        $departmentsManage = Permission::query()->firstOrCreate(
+            ['slug' => 'departments.manage'],
+            ['name' => 'Manage departments', 'slug' => 'departments.manage'],
+        );
+
         $manageUserRoles = Permission::query()->firstOrCreate(
             ['slug' => 'users.roles.manage'],
             ['name' => 'Manage user roles', 'slug' => 'users.roles.manage'],
         );
 
+        $usersManage = Permission::query()->firstOrCreate(
+            ['slug' => 'users.manage'],
+            ['name' => 'Manage system users', 'slug' => 'users.manage'],
+        );
+
         $deviceOverride = Permission::query()->firstOrCreate(
             ['slug' => 'devices.override'],
             ['name' => 'Override device binding', 'slug' => 'devices.override'],
+        );
+
+        $settingsManage = Permission::query()->firstOrCreate(
+            ['slug' => 'settings.manage'],
+            ['name' => 'Manage system settings', 'slug' => 'settings.manage'],
         );
 
         $roles = [
@@ -212,8 +242,11 @@ class RbacSeeder extends Seeder
                 $shiftSchedulesManage->id,
                 $employeesView->id,
                 $employeesManage->id,
+                $departmentsManage->id,
                 $manageUserRoles->id,
+                $usersManage->id,
                 $deviceOverride->id,
+                $settingsManage->id,
             ]);
         }
 
@@ -231,6 +264,10 @@ class RbacSeeder extends Seeder
 
         if ($hrAdminRole) {
             $hrAdminRole->permissions()->syncWithoutDetaching([
+                $branchesView->id,
+                $employeesView->id,
+                $employeesManage->id,
+                $departmentsManage->id,
                 $attendanceManageView->id,
                 $attendanceManageUpdate->id,
                 $attendanceCorrectionsView->id,

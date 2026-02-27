@@ -16,15 +16,9 @@ class AttendanceCheckInRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'branch_id' => ['required', 'integer', 'min:1', 'exists:branches,id'],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
         ];
-    }
-
-    public function branchId(): int
-    {
-        return (int) $this->validated('branch_id');
     }
 
     public function latitude(): float

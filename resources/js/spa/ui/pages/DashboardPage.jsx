@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { safeGet } from '../lib/api.js';
 import { useMe } from '../lib/useMe.js';
+import { useBranchScope } from '../lib/useBranchScope.js';
+import { formatIso, formatModelType } from '../lib/format.js';
+import { Icon } from '../shared/Icon.jsx';
 
 function KpiCard({ label, value, icon, accent = 'primary' }) {
     const accentClass = accent === 'gold' ? 'bg-[#C9A227]' : 'bg-[#0a1f43]';
@@ -14,7 +17,7 @@ function KpiCard({ label, value, icon, accent = 'primary' }) {
                     <div className="mt-1 text-3xl font-bold text-[#0a1f43]">{value}</div>
                 </div>
                 <div className="rounded-lg bg-[#0a1f43]/5 p-2 text-[#0a1f43]">
-                    <span className="material-symbols-outlined">{icon}</span>
+                    <Icon name={icon} className="h-5 w-5" />
                 </div>
             </div>
             <div className={['absolute bottom-0 left-0 h-1 w-full', accentClass].join(' ')} />
@@ -24,9 +27,11 @@ function KpiCard({ label, value, icon, accent = 'primary' }) {
 
 export function DashboardPage() {
     const { roles } = useMe();
+    const { branchId } = useBranchScope();
     const [state, setState] = useState({ status: 'loading', data: null, error: null });
     const [days, setDays] = useState(7);
     const [latencyMs, setLatencyMs] = useState(null);
+    const [page, setPage] = useState(1);
 
     useEffect(() => {
         let active = true;
@@ -35,7 +40,8 @@ export function DashboardPage() {
 
         (async () => {
             const startedAt = performance.now();
-            const res = await safeGet(`/api/system-admin/dashboard/overview?days=${days}`);
+            const branchParam = branchId ? `&branch_id=${branchId}` : '';
+            const res = await safeGet(`/api/system-admin/dashboard/overview?days=${days}&page=${page}${branchParam}`);
             const elapsed = Math.round(performance.now() - startedAt);
 
             if (!active) {
@@ -55,7 +61,7 @@ export function DashboardPage() {
         return () => {
             active = false;
         };
-    }, [days]);
+    }, [days, page, branchId]);
 
     const today = useMemo(() => new Date(), []);
     const dateLabel = today.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -65,7 +71,8 @@ export function DashboardPage() {
     const urgent = state.data?.urgent_actions ?? {};
     const chart = state.data?.charts?.geo_validation_failures ?? { labels: [], values: [] };
     const systemStatus = state.data?.system_status?.status ?? '—';
-    const recentLogs = Array.isArray(state.data?.recent_logs) ? state.data.recent_logs : [];
+    const recentLogs = Array.isArray(state.data?.recent_logs?.data) ? state.data.recent_logs.data : [];
+    const logsMeta = state.data?.recent_logs?.meta ?? null;
     const updatedAt = state.data?.timestamp ?? null;
 
     const chartMax = Math.max(1, ...(Array.isArray(chart.values) ? chart.values : []));
@@ -93,9 +100,9 @@ export function DashboardPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard label="Total Branches" value={kpis.total_branches ?? '—'} icon="store" />
-                <KpiCard label="Total Employees" value={kpis.total_employees ?? '—'} icon="badge" accent="gold" />
-                <KpiCard label="Active Sessions" value={kpis.active_sessions ?? '—'} icon="devices" />
-                <KpiCard label="Compliance Score" value={kpis.compliance_score ?? '—'} icon="verified_user" accent="gold" />
+                <KpiCard label="Total Employees" value={kpis.total_employees ?? '—'} icon="users" accent="gold" />
+                <KpiCard label="Active Sessions" value={kpis.active_sessions ?? '—'} icon="activity" />
+                <KpiCard label="Compliance Score" value={kpis.compliance_score ?? '—'} icon="badgeCheck" accent="gold" />
             </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -133,13 +140,16 @@ export function DashboardPage() {
                             ))}
                         </div>
 
-                        <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none">
+                        <svg
+                            className="pointer-events-none absolute inset-0 h-full w-full"
+                            preserveAspectRatio="none"
+                            viewBox="0 0 1000 100"
+                        >
                             <path
-                                d="M0 80% L 50 65% L 100 75% L 150 55% L 200 85% L 250 70% L 300 90% L 350 80% L 400 60% L 450 75% L 500 85% L 550 70% L 600 80% L 650 90% L 700 85% L 750 75% L 800 65% L 850 70% L 900 80% L 950 90%"
+                                d="M0 80 L 50 65 L 100 75 L 150 55 L 200 85 L 250 70 L 300 90 L 350 80 L 400 60 L 450 75 L 500 85 L 550 70 L 600 80 L 650 90 L 700 85 L 750 75 L 800 65 L 850 70 L 900 80 L 950 90"
                                 fill="none"
                                 stroke="#C9A227"
                                 strokeWidth="2"
-                                vectorEffect="non-scaling-stroke"
                             />
                         </svg>
                     </div>
@@ -154,7 +164,7 @@ export function DashboardPage() {
                 <div className="flex flex-col gap-4">
                     <div className="relative overflow-hidden rounded-lg bg-[#0a1f43] p-6 text-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)]">
                         <div className="pointer-events-none absolute -right-4 -top-4 text-white/5">
-                            <span className="material-symbols-outlined text-9xl">shield</span>
+                            <Icon name="shield" className="h-24 w-24" />
                         </div>
                         <div className="relative text-lg font-bold">System Status</div>
                         <div className="relative mt-4 space-y-4">
@@ -213,8 +223,14 @@ export function DashboardPage() {
                         </span>
                     </div>
                     <div className="flex gap-2">
-                        <button type="button" className="flex items-center gap-1 rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-50">
-                            <span className="material-symbols-outlined text-base">filter_list</span>
+                        <button
+                            type="button"
+                            className="flex items-center gap-1 rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-50"
+                            onClick={() => {
+                                window.location.assign('/audit');
+                            }}
+                        >
+                            <Icon name="filter" className="h-4 w-4" />
                             Filter
                         </button>
                         <button
@@ -236,7 +252,7 @@ export function DashboardPage() {
                                 URL.revokeObjectURL(url);
                             }}
                         >
-                            <span className="material-symbols-outlined text-base">download</span>
+                            <Icon name="download" className="h-4 w-4" />
                             Export
                         </button>
                     </div>
@@ -280,12 +296,12 @@ export function DashboardPage() {
 
                             {recentLogs.map((row) => (
                                 <tr key={row.id} className="cursor-pointer transition-colors hover:bg-slate-50">
-                                    <td className="px-6 py-4 font-mono text-slate-600">{row.created_at ?? '—'}</td>
+                                    <td className="px-6 py-4 font-mono text-slate-600">{formatIso(row.created_at)}</td>
                                     <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.id}</td>
-                                    <td className="px-6 py-4 font-medium text-slate-800">{row.user_id ?? '—'}</td>
+                                    <td className="px-6 py-4 font-medium text-slate-800">{row.actor_name ?? row.user_id ?? '—'}</td>
                                     <td className="px-6 py-4 text-slate-600">{row.action ?? '—'}</td>
                                     <td className="px-6 py-4 text-right text-slate-500">
-                                        {(row.model_type ?? '—') + (row.model_id ? `#${row.model_id}` : '')}
+                                        {formatModelType(row.model_type) + (row.model_id ? `#${row.model_id}` : '')}
                                     </td>
                                 </tr>
                             ))}
@@ -294,12 +310,24 @@ export function DashboardPage() {
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 p-4">
-                    <span className="text-xs text-slate-500">Showing latest logs</span>
+                    <span className="text-xs text-slate-500">
+                        Page {logsMeta?.page ?? 1} of {logsMeta?.last_page ?? 1}
+                    </span>
                     <div className="flex gap-1">
-                        <button type="button" className="rounded border border-slate-300 bg-white px-3 py-1 text-xs text-slate-500" disabled>
+                        <button
+                            type="button"
+                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs text-slate-500 disabled:opacity-50"
+                            disabled={!logsMeta?.has_prev}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        >
                             Previous
                         </button>
-                        <button type="button" className="rounded border border-slate-300 bg-white px-3 py-1 text-xs text-slate-500" disabled>
+                        <button
+                            type="button"
+                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs text-slate-500 disabled:opacity-50"
+                            disabled={!logsMeta?.has_next}
+                            onClick={() => setPage((p) => p + 1)}
+                        >
                             Next
                         </button>
                     </div>

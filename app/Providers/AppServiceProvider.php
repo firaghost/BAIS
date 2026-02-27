@@ -12,6 +12,8 @@ use App\Modules\Leaves\Models\LeaveRequest;
 use App\Modules\Leaves\Policies\LeaveRequestPolicy;
 use App\Modules\Payroll\Models\PayrollRecord;
 use App\Modules\Payroll\Policies\PayrollRecordPolicy;
+use App\Modules\Reports\Models\ReportRun;
+use App\Modules\Reports\Policies\ReportRunPolicy;
 use App\Modules\Shifts\Models\Shift;
 use App\Modules\Shifts\Policies\ShiftPolicy;
 use App\Models\User;
@@ -55,6 +57,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Employee::class, EmployeePolicy::class);
         Gate::policy(LeaveRequest::class, LeaveRequestPolicy::class);
         Gate::policy(PayrollRecord::class, PayrollRecordPolicy::class);
+        Gate::policy(ReportRun::class, ReportRunPolicy::class);
         Gate::policy(Shift::class, ShiftPolicy::class);
         Gate::policy(User::class, UserPolicy::class);
     }

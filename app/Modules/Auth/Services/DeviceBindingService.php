@@ -29,19 +29,47 @@ class DeviceBindingService
         }
 
         $employeeId = Employee::query()->where('user_id', $user->id)->value('id');
+        if (!$employeeId) {
+            return;
+        }
 
+        // Check if this exact device identifier is already registered in the DB
+        $existingDevice = Device::query()
+            ->where('device_identifier', $deviceIdentifier)
+            ->first();
+
+        // If the device is already in the DB for THIS employee, let him login
+        if ($existingDevice && $existingDevice->user_id === $user->id) {
+            // Ensure it is the active device
+            if (!$existingDevice->is_active) {
+                $this->db->transaction(function () use ($user, $existingDevice): void {
+                    // Deactivate others
+                    Device::query()
+                        ->where('user_id', $user->id)
+                        ->where('is_active', true)
+                        ->update(['is_active' => false]);
+                    
+                    // Activate this one
+                    $existingDevice->update(['is_active' => true]);
+                });
+            }
+            return;
+        }
+
+        // If it belongs to someone else, reject
+        if ($existingDevice && $existingDevice->user_id !== $user->id) {
+            throw new AuthenticationException('This device is already registered to another account. Please use a different device or contact support.');
+        }
+
+        // If the device is NEW (not in the DB), check if employee already has an active device
         $activeDevice = Device::query()
             ->where('user_id', $user->id)
             ->where('is_active', true)
             ->first();
 
+        // If they don't have an active device, bind this new one
         if (!$activeDevice) {
             $this->db->transaction(function () use ($user, $employeeId, $deviceIdentifier, $deviceName, $ipAddress): void {
-                Device::query()
-                    ->where('user_id', $user->id)
-                    ->where('is_active', true)
-                    ->update(['is_active' => false]);
-
                 $created = Device::query()->create([
                     'user_id' => $user->id,
                     'employee_id' => $employeeId,
@@ -63,57 +91,10 @@ class DeviceBindingService
                     $ipAddress,
                 );
             });
-
             return;
         }
 
-        if (hash_equals((string) $activeDevice->device_identifier, $deviceIdentifier)) {
-            return;
-        }
-
-        if ($user->hasRole('super-admin')) {
-            $conflict = Device::query()
-                ->where('device_identifier', $deviceIdentifier)
-                ->where('user_id', '!=', $user->id)
-                ->exists();
-
-            if ($conflict) {
-                throw new AuthenticationException('Login rejected: device identifier is already registered.');
-            }
-
-            $this->db->transaction(function () use ($user, $employeeId, $deviceIdentifier, $deviceName, $ipAddress, $activeDevice): void {
-                Device::query()
-                    ->where('user_id', $user->id)
-                    ->where('is_active', true)
-                    ->update(['is_active' => false]);
-
-                $created = Device::query()->create([
-                    'user_id' => $user->id,
-                    'employee_id' => $employeeId,
-                    'device_identifier' => $deviceIdentifier,
-                    'device_name' => $deviceName,
-                    'is_active' => true,
-                ]);
-
-                $this->auditWriter->log(
-                    $user->id,
-                    'device.bound_superadmin',
-                    Device::class,
-                    $created->id,
-                    [
-                        'previous_device_identifier' => (string) $activeDevice->device_identifier,
-                    ],
-                    [
-                        'device_identifier' => $deviceIdentifier,
-                        'device_name' => $deviceName,
-                    ],
-                    $ipAddress,
-                );
-            });
-
-            return;
-        }
-
+        // They already have a different active device bound
         $this->auditWriter->log(
             $user->id,
             'device.login_rejected',
@@ -129,7 +110,7 @@ class DeviceBindingService
             $ipAddress,
         );
 
-        throw new AuthenticationException('Login rejected: unregistered device.');
+        throw new AuthenticationException('Your account is already registered on another device. Please use your registered device or contact an administrator to reset your device.');
     }
 
     public function overrideBind(

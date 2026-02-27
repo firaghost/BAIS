@@ -26,6 +26,10 @@ class User extends Authenticatable
         'email',
         'password',
         'must_change_password',
+        'is_active',
+        'access_scope_type',
+        'access_scope_branch_id',
+        'access_scope_region',
     ];
 
     /**
@@ -49,12 +53,18 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'must_change_password' => 'bool',
+            'is_active' => 'bool',
+            'access_scope_branch_id' => 'int',
         ];
     }
-
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'user_role');
+    }
+
+    public function employee()
+    {
+        return $this->hasOne(\App\Modules\Employees\Models\Employee::class, 'user_id');
     }
 
     public function hasRole(string $roleSlug): bool

@@ -2,14 +2,27 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useMe } from './lib/useMe.js';
+import { safeGet } from './lib/api.js';
+import { useBranchScope } from './lib/useBranchScope.js';
+import { Icon } from './shared/Icon.jsx';
 
 const systemAdminNav = [
+    { to: '/super-admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
+    { to: '/super-admin/branches', label: 'Branches', icon: 'branches' },
+    { to: '/super-admin/employees', label: 'Employees', icon: 'users' },
+    { to: '/super-admin/system-users', label: 'System Users', icon: 'userPlus' },
+    { to: '/super-admin/audit', label: 'Audit Logs', icon: 'wrench' },
+    { to: '/super-admin/reports', label: 'Reports', icon: 'analytics' },
+    { to: '/super-admin/settings', label: 'Settings', icon: 'settings' },
+];
+
+const hrAdminNav = [
     { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { to: '/branches', label: 'Branches', icon: 'domain' },
-    { to: '/employees', label: 'Employees', icon: 'group' },
-    { to: '/audit', label: 'Audit Logs', icon: 'description' },
+    { to: '/attendance', label: 'Attendance', icon: 'schedule' },
+    { to: '/employees', label: 'Employees', icon: 'users' },
+    { to: '/leaves', label: 'Leave Requests', icon: 'event', badgeKey: 'pending_leave_requests' },
     { to: '/reports', label: 'Reports', icon: 'analytics' },
-    { to: '/settings', label: 'Settings', icon: 'settings' },
+    { to: '/settings', label: 'Policy Config', icon: 'settings' },
 ];
 
 const defaultNav = [
@@ -17,13 +30,17 @@ const defaultNav = [
     { to: '/attendance', label: 'Attendance', icon: 'schedule' },
     { to: '/leaves', label: 'Leaves', icon: 'event' },
     { to: '/payroll', label: 'Payroll', icon: 'payments' },
-    { to: '/audit', label: 'Audit Logs', icon: 'description' },
+    { to: '/audit', label: 'Audit Logs', icon: 'wrench' },
     { to: '/corrections', label: 'Corrections', icon: 'edit_note' },
     { to: '/shift-schedules', label: 'Shift Schedules', icon: 'work_history' },
 ];
 
 function isSystemAdmin(roles) {
     return Array.isArray(roles) && roles.includes('super-admin');
+}
+
+function isHrAdmin(roles) {
+    return Array.isArray(roles) && roles.includes('hr-admin');
 }
 
 function useAutoCollapse() {
@@ -51,8 +68,21 @@ export function Shell() {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, roles } = useMe();
+    const { branchId, setBranchId } = useBranchScope();
+    const [branches, setBranches] = useState([]);
+    const [navMeta, setNavMeta] = useState({});
 
-    const nav = useMemo(() => (isSystemAdmin(roles) ? systemAdminNav : defaultNav), [roles]);
+    const nav = useMemo(() => {
+        if (isSystemAdmin(roles)) {
+            return systemAdminNav;
+        }
+
+        if (isHrAdmin(roles)) {
+            return hrAdminNav;
+        }
+
+        return defaultNav;
+    }, [roles]);
     const autoCollapse = useAutoCollapse();
     const [collapsed, setCollapsed] = useState(false);
 
@@ -61,6 +91,64 @@ export function Shell() {
             setCollapsed(true);
         }
     }, [autoCollapse]);
+
+    useEffect(() => {
+        let active = true;
+
+        (async () => {
+            const res = await safeGet('/api/branches');
+
+            if (!active) {
+                return;
+            }
+
+            const list = res.ok && Array.isArray(res.data?.data) ? res.data.data : [];
+            setBranches(list);
+        })();
+
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+
+        if (!isHrAdmin(roles)) {
+            setNavMeta({});
+            return () => {
+                active = false;
+            };
+        }
+
+        const fetchNavMeta = async () => {
+            const res = await safeGet('/api/hr-admin/dashboard/nav-meta');
+
+            if (!active) {
+                return;
+            }
+
+            if (!res.ok) {
+                setNavMeta({});
+                return;
+            }
+
+            setNavMeta(res.data ?? {});
+        };
+
+        fetchNavMeta();
+
+        const onRefresh = () => {
+            fetchNavMeta();
+        };
+
+        window.addEventListener('bais:navMetaRefresh', onRefresh);
+
+        return () => {
+            active = false;
+            window.removeEventListener('bais:navMetaRefresh', onRefresh);
+        };
+    }, [roles]);
 
     const title = useMemo(() => {
         const item = nav.find((n) => n.to === location.pathname);
@@ -99,8 +187,14 @@ export function Shell() {
                                         ].join(' ')
                                     }
                                 >
-                                    <span className="material-symbols-outlined">{item.icon}</span>
+                                    <Icon name={item.icon} className="h-5 w-5" />
                                     {collapsed ? null : <span className="ml-3 font-medium">{item.label}</span>}
+
+                                    {!collapsed && item.badgeKey ? (
+                                        <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                                            {Number(navMeta?.[item.badgeKey] ?? 0)}
+                                        </span>
+                                    ) : null}
 
                                     {collapsed ? (
                                         <span className="pointer-events-none absolute left-16 z-50 hidden rounded bg-slate-800 px-2 py-1 text-xs opacity-0 transition-opacity md:block group-hover:opacity-100">
@@ -141,7 +235,7 @@ export function Shell() {
                                 navigate('/login', { replace: true });
                             }}
                         >
-                            <span className="material-symbols-outlined text-sm">logout</span>
+                            <Icon name="logout" className="h-4 w-4" />
                             {collapsed ? null : <span className="ml-2 text-sm">Logout</span>}
                         </button>
                     </div>
@@ -157,20 +251,31 @@ export function Shell() {
                             onClick={() => setCollapsed((v) => !v)}
                             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                         >
-                            <span className="material-symbols-outlined">menu</span>
+                            <Icon name="menu" className="h-5 w-5" />
                         </button>
 
-                        <h1 className="hidden text-xl font-bold text-[#0a1f43] sm:block">Attendance Intelligence</h1>
+                        <h1 className="hidden text-xl font-bold text-[#0a1f43] sm:block">{title}</h1>
 
                         <div className="relative hidden md:block">
-                            <button
-                                type="button"
-                                className="flex items-center gap-2 rounded bg-slate-100 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-slate-200"
+                            <label className="sr-only" htmlFor="branch-scope">
+                                Branch scope
+                            </label>
+                            <select
+                                id="branch-scope"
+                                className="rounded bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-200"
+                                value={branchId ?? 0}
+                                onChange={(e) => {
+                                    const n = parseInt(e.target.value, 10);
+                                    setBranchId(Number.isFinite(n) && n > 0 ? n : null);
+                                }}
                             >
-                                <span className="material-symbols-outlined text-lg">apartment</span>
-                                <span>Global View (All Branches)</span>
-                                <span className="material-symbols-outlined text-lg">expand_more</span>
-                            </button>
+                                <option value={0}>Global View (All Branches)</option>
+                                {branches.map((b) => (
+                                    <option key={b.id} value={b.id}>
+                                        {b.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
@@ -187,7 +292,7 @@ export function Shell() {
                             className="relative rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100"
                             aria-label="Search"
                         >
-                            <span className="material-symbols-outlined">search</span>
+                            <Icon name="search" className="h-5 w-5" />
                         </button>
 
                         <button
@@ -195,7 +300,7 @@ export function Shell() {
                             className="relative rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100"
                             aria-label="Notifications"
                         >
-                            <span className="material-symbols-outlined">notifications</span>
+                            <Icon name="bell" className="h-5 w-5" />
                             <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-red-500" />
                         </button>
 

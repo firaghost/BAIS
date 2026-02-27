@@ -15,6 +15,11 @@ import { BranchesPage } from './pages/Branches/index.jsx';
 import { EmployeesPage } from './pages/Employees/index.jsx';
 import { ReportsPage } from './pages/Reports/index.jsx';
 import { SettingsPage } from './pages/Settings/index.jsx';
+import { SystemUsersPage } from './pages/SystemUsers/index.jsx';
+import { SystemUsersDirectoryPage } from './pages/SystemUsersDirectoryPage.jsx';
+import { SuperAdminDashboard } from './pages/superadmin/DashboardPage.jsx';
+import { HrAdminDashboard } from './pages/hradmin/DashboardPage.jsx';
+import { HrAdminAttendance } from './pages/hradmin/AttendancePage.jsx';
 
 export function App() {
     return (
@@ -34,7 +39,21 @@ export function App() {
                     <Route path="/corrections" element={<CorrectionsPage />} />
                     <Route path="/shift-schedules" element={<ShiftSchedulesPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/system-users" element={<SystemUsersDirectoryPage />} />
+                    <Route path="/system-users/new" element={<SystemUsersPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
+
+                    <Route path="/super-admin/dashboard" element={<SuperAdminDashboard />} />
+                    <Route path="/super-admin/branches" element={<BranchesPage />} />
+                    <Route path="/super-admin/employees" element={<EmployeesPage />} />
+                    <Route path="/super-admin/system-users" element={<SystemUsersDirectoryPage />} />
+                    <Route path="/super-admin/system-users/new" element={<SystemUsersPage />} />
+                    <Route path="/super-admin/audit" element={<AuditPage />} />
+                    <Route path="/super-admin/reports" element={<ReportsPage />} />
+                    <Route path="/super-admin/settings" element={<SettingsPage />} />
+
+                    <Route path="/hr-admin/dashboard" element={<HrAdminDashboard />} />
+                    <Route path="/hr-admin/attendance" element={<HrAdminAttendance />} />
                 </Route>
             </Route>
         </Routes>

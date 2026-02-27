@@ -16,12 +16,7 @@ class AttendanceCheckOutRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'branch_id' => ['required', 'integer', 'min:1', 'exists:branches,id'],
+            // no payload required
         ];
-    }
-
-    public function branchId(): int
-    {
-        return (int) $this->validated('branch_id');
     }
 }

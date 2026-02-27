@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/attendance_provider.dart';
@@ -47,16 +47,27 @@ class AppRoot extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
 
     if (auth.isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading...'),
-            ],
-          ),
+      return Scaffold(
+        backgroundColor: AppTheme.background(context),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset('assets/splash.png', fit: BoxFit.cover),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 44),
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    color: AppTheme.primaryBlue,
+                    strokeWidth: 2.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -89,18 +100,19 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.card(context),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 10,
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.06),
+              blurRadius: 12,
               offset: const Offset(0, -2),
             ),
           ],
@@ -113,35 +125,35 @@ class _MainNavigationState extends State<MainNavigation> {
               children: [
                 _NavItem(
                   icon: Icons.dashboard_outlined,
-                  activeIcon: Icons.dashboard,
-                  label: 'Dashboard',
+                  activeIcon: Icons.dashboard_rounded,
+                  label: 'Home',
                   isActive: _currentIndex == 0,
                   onTap: () => setState(() => _currentIndex = 0),
                 ),
                 _NavItem(
                   icon: Icons.calendar_today_outlined,
-                  activeIcon: Icons.calendar_today,
+                  activeIcon: Icons.calendar_today_rounded,
                   label: 'Schedule',
                   isActive: _currentIndex == 1,
                   onTap: () => setState(() => _currentIndex = 1),
                 ),
                 _NavItem(
                   icon: Icons.history_outlined,
-                  activeIcon: Icons.history,
+                  activeIcon: Icons.history_rounded,
                   label: 'History',
                   isActive: _currentIndex == 2,
                   onTap: () => setState(() => _currentIndex = 2),
                 ),
                 _NavItem(
                   icon: Icons.event_note_outlined,
-                  activeIcon: Icons.event_note,
+                  activeIcon: Icons.event_note_rounded,
                   label: 'Leave',
                   isActive: _currentIndex == 3,
                   onTap: () => setState(() => _currentIndex = 3),
                 ),
                 _NavItem(
                   icon: Icons.person_outline,
-                  activeIcon: Icons.person,
+                  activeIcon: Icons.person_rounded,
                   label: 'Profile',
                   isActive: _currentIndex == 4,
                   onTap: () => setState(() => _currentIndex = 4),
@@ -179,7 +191,9 @@ class _NavItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? AppTheme.primaryBlue.withValues(alpha: 0.1) : Colors.transparent,
+          color: isActive
+              ? AppTheme.primaryBlue.withValues(alpha: 0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -187,14 +201,18 @@ class _NavItem extends StatelessWidget {
           children: [
             Icon(
               isActive ? activeIcon : icon,
-              color: isActive ? AppTheme.primaryBlue : AppTheme.textLight,
+              color: isActive
+                  ? AppTheme.primaryBlue
+                  : AppTheme.textLight(context),
               size: 22,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? AppTheme.primaryBlue : AppTheme.textLight,
+                color: isActive
+                    ? AppTheme.primaryBlue
+                    : AppTheme.textLight(context),
                 fontSize: 11,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
               ),

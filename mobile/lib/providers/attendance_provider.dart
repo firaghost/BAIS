@@ -21,7 +21,8 @@ class AttendanceProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isCheckingIn => _isCheckingIn;
   String? get error => _error;
-  bool get isCheckedIn => _todayLog != null && _todayLog!.status == 'checked_in';
+  bool get isCheckedIn =>
+      _todayLog != null && _todayLog!.status == 'checked_in';
 
   Shift? get currentShift => _shifts.isNotEmpty ? _shifts.first : null;
 
@@ -64,7 +65,6 @@ class AttendanceProvider extends ChangeNotifier {
   }
 
   Future<bool> checkIn({
-    required int branchId,
     required double latitude,
     required double longitude,
   }) async {
@@ -74,7 +74,6 @@ class AttendanceProvider extends ChangeNotifier {
 
     try {
       final log = await _attendanceService.checkIn(
-        branchId: branchId,
         latitude: latitude,
         longitude: longitude,
       );
@@ -83,30 +82,44 @@ class AttendanceProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = _friendlyError(e);
       _isCheckingIn = false;
       notifyListeners();
       return false;
     }
   }
 
-  Future<bool> checkOut({required int branchId}) async {
+  Future<bool> checkOut() async {
     _isCheckingIn = true;
     _error = null;
     notifyListeners();
 
     try {
-      final log = await _attendanceService.checkOut(branchId: branchId);
+      final log = await _attendanceService.checkOut();
       _todayLog = log;
       _isCheckingIn = false;
       notifyListeners();
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = _friendlyError(e);
       _isCheckingIn = false;
       notifyListeners();
       return false;
     }
+  }
+
+  String _friendlyError(Object e) {
+    final raw = e.toString();
+    final cleaned = raw
+        .replaceAll(RegExp(r'^Exception:\s*'), '')
+        .replaceAll(RegExp(r'^ApiException\(\d+\):\s*'), '')
+        .trim();
+
+    if (cleaned.isEmpty) {
+      return 'Something went wrong. Please try again.';
+    }
+
+    return cleaned;
   }
 
   // Weekly summary calculations

@@ -1,1 +1,1 @@
-export { DashboardPage } from '../DashboardPage.jsx';
+export { RoleBasedDashboardPage as DashboardPage } from './RoleBasedDashboardPage.jsx';

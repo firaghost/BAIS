@@ -12,12 +12,16 @@ use App\Modules\Attendance\Requests\AttendanceHistoryRequest;
 use App\Modules\Attendance\Requests\AttendanceManageIndexRequest;
 use App\Modules\Attendance\Requests\AttendanceManageUpdateRequest;
 use App\Modules\Attendance\Services\AttendanceService;
+use App\Modules\Settings\Services\SystemSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Auth\AuthenticationException;
 
 class AttendanceController extends Controller
 {
-    public function __construct(private readonly AttendanceService $attendanceService)
+    public function __construct(
+        private readonly AttendanceService $attendanceService,
+        private readonly SystemSettingsService $systemSettings,
+    )
     {
     }
 
@@ -31,12 +35,18 @@ class AttendanceController extends Controller
 
         $created = $this->attendanceService->checkIn(
             $actor,
-            $request->branchId(),
             $request->latitude(),
             $request->longitude(),
         );
 
         return response()->json(['data' => $created], 201);
+    }
+
+    public function headOfficeGeo(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->systemSettings->getHeadOfficeGeoFence(),
+        ]);
     }
 
     public function checkOut(AttendanceCheckOutRequest $request): JsonResponse
@@ -47,7 +57,7 @@ class AttendanceController extends Controller
             throw new AuthenticationException('Unauthenticated.');
         }
 
-        $updated = $this->attendanceService->checkOut($actor, $request->branchId());
+        $updated = $this->attendanceService->checkOut($actor);
 
         return response()->json(['data' => $updated]);
     }
@@ -65,7 +75,6 @@ class AttendanceController extends Controller
             $request->fromDate(),
             $request->toDate(),
             $request->status(),
-            $request->branchId(),
             $request->perPage(),
         );
 
@@ -84,7 +93,6 @@ class AttendanceController extends Controller
             $request->fromDate(),
             $request->toDate(),
             $request->status(),
-            $request->branchId(),
             $request->userId(),
             $request->employeeId(),
             $request->perPage(),

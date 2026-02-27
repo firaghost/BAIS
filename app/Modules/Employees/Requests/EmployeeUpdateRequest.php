@@ -37,6 +37,8 @@ class EmployeeUpdateRequest extends FormRequest
         return [
             'user_id' => ['sometimes', 'nullable', 'integer', 'min:1', 'exists:users,id'],
             'branch_id' => ['sometimes', 'nullable', 'integer', 'min:1', 'exists:branches,id'],
+            'branch_code' => ['sometimes', 'nullable', 'string', 'min:1', 'max:50', 'exists:branches,branch_code'],
+            'branch_name' => ['sometimes', 'nullable', 'string', 'min:2', 'max:150', 'exists:branches,name'],
             'first_name' => ['sometimes', 'string', 'min:1', 'max:100'],
             'middle_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'last_name' => ['sometimes', 'string', 'min:1', 'max:100'],
@@ -45,7 +47,7 @@ class EmployeeUpdateRequest extends FormRequest
             'job_title' => ['sometimes', 'nullable', 'string', 'max:150'],
             'department' => ['sometimes', 'nullable', 'string', 'max:150'],
             'hire_date' => ['sometimes', 'date', 'date_format:Y-m-d'],
-            'status' => ['sometimes', 'string', 'in:active,inactive'],
+            'status' => ['sometimes', 'string', 'in:active,inactive,on_leave,probation,suspended'],
         ];
     }
 

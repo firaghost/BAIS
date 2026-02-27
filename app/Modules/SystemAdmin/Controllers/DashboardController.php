@@ -19,10 +19,17 @@ class DashboardController extends Controller
     {
         $days = (int) $request->query('days', 7);
 
+        $branchId = $request->query('branch_id');
+        $branchId = is_numeric($branchId) ? (int) $branchId : null;
+        $branchId = $branchId && $branchId > 0 ? $branchId : null;
+
+        $page = (int) $request->query('page', 1);
+        $perPage = (int) $request->query('per_page', 5);
+
         if (!in_array($days, [7, 30], true)) {
             $days = 7;
         }
 
-        return response()->json($this->overviewService->getOverview($days));
+        return response()->json($this->overviewService->getOverview($days, $branchId, $page, $perPage));
     }
 }

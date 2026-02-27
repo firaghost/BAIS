@@ -10,8 +10,11 @@ use App\Modules\Audit\Services\AuditWriterService;
 use App\Modules\Branches\Models\Branch;
 use App\Modules\Employees\Models\Employee;
 use App\Modules\Shifts\Models\Shift;
+use App\Modules\Settings\Services\SystemSettingsService;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
+use Throwable;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class AttendanceService
@@ -19,24 +22,42 @@ class AttendanceService
     public function __construct(
         private readonly DatabaseManager $db,
         private readonly GeoFenceValidationService $geoFence,
+        private readonly SystemSettingsService $systemSettings,
         private readonly AuditWriterService $auditWriter,
     ) {
     }
 
-    public function checkIn(User $user, int $branchId, float $latitude, float $longitude): AttendanceLog
+    public function checkIn(User $user, float $latitude, float $longitude): AttendanceLog
     {
-        $branch = Branch::query()->findOrFail($branchId);
+        $employee = Employee::query()
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$employee) {
+            throw new HttpException(403, 'Employee profile is required.');
+        }
+
+        $branchId = $employee->branch_id ? (int) $employee->branch_id : null;
+        if (!$branchId) {
+            $branchId = (int) Branch::query()->orderBy('id')->value('id');
+        }
+
+        if (!$branchId) {
+            throw new HttpException(422, 'No branch is configured for shift resolution.');
+        }
+
+        $headOffice = $this->systemSettings->getHeadOfficeGeoFence();
 
         $within = $this->geoFence->isWithinRadiusMeters(
-            (float) $branch->latitude,
-            (float) $branch->longitude,
+            (float) ($headOffice['latitude'] ?? 0),
+            (float) ($headOffice['longitude'] ?? 0),
             $latitude,
             $longitude,
-            (int) $branch->radius_meters,
+            (int) ($headOffice['radius_meters'] ?? 0),
         );
 
         if (!$within) {
-            throw new HttpException(403, 'Outside branch geofence.');
+            throw new HttpException(403, 'You are outside the Head Office geo-fence. Please move closer and try again.');
         }
 
         $now = now();
@@ -49,15 +70,13 @@ class AttendanceService
             ->first();
 
         if ($existing) {
-            throw new HttpException(409, 'Duplicate check-in.');
+            throw new HttpException(409, 'You are already checked in for today.');
         }
 
         $shift = $this->resolveShiftForBranch($branchId);
         $lateMinutes = $this->calculateLateMinutes($now, $shift);
 
-        $employeeId = Employee::query()
-            ->where('user_id', $user->id)
-            ->value('id');
+        $employeeId = (int) $employee->id;
 
         return $this->db->transaction(function () use ($user, $employeeId, $branchId, $logDate, $now, $lateMinutes): AttendanceLog {
             return AttendanceLog::query()->create([
@@ -74,14 +93,13 @@ class AttendanceService
         });
     }
 
-    public function checkOut(User $user, int $branchId): AttendanceLog
+    public function checkOut(User $user): AttendanceLog
     {
         $now = now();
         $logDate = $now->toDateString();
 
         $active = AttendanceLog::query()
             ->where('user_id', $user->id)
-            ->where('branch_id', $branchId)
             ->where('log_date', $logDate)
             ->whereNull('check_out_time')
             ->first();
@@ -94,7 +112,7 @@ class AttendanceService
             throw new HttpException(409, 'Invalid check-out time.');
         }
 
-        $shift = $this->resolveShiftForBranch($branchId);
+        $shift = $this->resolveShiftForBranch((int) $active->branch_id);
         $overtimeMinutes = $this->calculateOvertimeMinutes($now, $shift);
 
         return $this->db->transaction(function () use ($active, $now, $overtimeMinutes): AttendanceLog {
@@ -112,7 +130,6 @@ class AttendanceService
         ?string $from,
         ?string $to,
         ?string $status,
-        ?int $branchId,
         int $perPage,
     ): LengthAwarePaginator {
         $query = AttendanceLog::query()
@@ -132,10 +149,6 @@ class AttendanceService
             $query->where('status', $status);
         }
 
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
-        }
-
         return $query->paginate($perPage);
     }
 
@@ -143,7 +156,6 @@ class AttendanceService
         ?string $from,
         ?string $to,
         ?string $status,
-        ?int $branchId,
         ?int $userId,
         ?int $employeeId,
         int $perPage,
@@ -163,10 +175,6 @@ class AttendanceService
 
         if ($status) {
             $query->where('status', $status);
-        }
-
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
         }
 
         if ($userId) {
@@ -191,6 +199,21 @@ class AttendanceService
                 throw new HttpException(422, 'Invalid check-out time.');
             }
 
+            try {
+                $shift = $this->resolveShiftForBranch((int) $log->branch_id);
+                $log->late_minutes = $this->calculateLateMinutesForDate($log->check_in_time, $log->log_date, $shift);
+                $log->overtime_minutes = $this->calculateOvertimeMinutesForDate($log->check_out_time, $log->log_date, $shift);
+            } catch (Throwable $e) {
+                if ($e instanceof HttpException && $e->getStatusCode() === 422) {
+                    $log->late_minutes = 0;
+                    $log->overtime_minutes = 0;
+                } else {
+                    throw $e;
+                }
+            }
+
+            $log->status = $log->check_out_time ? 'checked_out' : 'checked_in';
+
             $log->save();
 
             $new = $log->toArray();
@@ -208,6 +231,40 @@ class AttendanceService
 
             return $log;
         });
+    }
+
+    private function calculateLateMinutesForDate(?Carbon $checkInAt, $logDate, Shift $shift): int
+    {
+        if (!$checkInAt) {
+            return 0;
+        }
+
+        $date = $logDate instanceof Carbon ? $logDate->copy() : Carbon::parse((string) $logDate);
+        $start = $date->copy()->startOfDay()->setTimeFromTimeString($shift->start_time);
+        $lateFrom = $start->copy()->addMinutes((int) $shift->grace_minutes);
+
+        if ($checkInAt->lessThanOrEqualTo($lateFrom)) {
+            return 0;
+        }
+
+        return (int) $lateFrom->diffInMinutes($checkInAt);
+    }
+
+    private function calculateOvertimeMinutesForDate(?Carbon $checkOutAt, $logDate, Shift $shift): int
+    {
+        if (!$checkOutAt) {
+            return 0;
+        }
+
+        $date = $logDate instanceof Carbon ? $logDate->copy() : Carbon::parse((string) $logDate);
+        $end = $date->copy()->startOfDay()->setTimeFromTimeString($shift->end_time);
+        $overtimeFrom = $end->copy()->addMinutes((int) $shift->overtime_threshold);
+
+        if ($checkOutAt->lessThanOrEqualTo($overtimeFrom)) {
+            return 0;
+        }
+
+        return (int) $overtimeFrom->diffInMinutes($checkOutAt);
     }
 
     private function resolveShiftForBranch(int $branchId): Shift

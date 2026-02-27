@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Attendance\Requests;
 
+use Illuminate\Support\Arr;
 use Illuminate\Foundation\Http\FormRequest;
 
 class AttendanceManageUpdateRequest extends FormRequest
@@ -44,7 +45,7 @@ class AttendanceManageUpdateRequest extends FormRequest
 
     public function payload(): array
     {
-        return $this->validated();
+        return Arr::except($this->validated(), ['reason']);
     }
 
     public function reason(): string

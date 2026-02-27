@@ -2,6 +2,7 @@ class User {
   final int id;
   final String name;
   final String email;
+  final String? login;
   final bool mustChangePassword;
   final Employee? employee;
 
@@ -9,6 +10,7 @@ class User {
     required this.id,
     required this.name,
     required this.email,
+    this.login,
     this.mustChangePassword = false,
     this.employee,
   });
@@ -18,6 +20,7 @@ class User {
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       email: json['email'] as String? ?? '',
+      login: json['login'] as String?,
       mustChangePassword: json['must_change_password'] == true,
       employee: json['employee'] != null
           ? Employee.fromJson(json['employee'] as Map<String, dynamic>)
@@ -29,6 +32,7 @@ class User {
         'id': id,
         'name': name,
         'email': email,
+        'login': login,
       };
 }
 

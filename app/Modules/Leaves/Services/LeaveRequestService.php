@@ -7,16 +7,89 @@ namespace App\Modules\Leaves\Services;
 use App\Models\User;
 use App\Modules\Audit\Services\AuditWriterService;
 use App\Modules\Employees\Models\Employee;
+use App\Modules\Leaves\Models\LeaveCredit;
 use App\Modules\Leaves\Models\LeaveRequest;
 use Carbon\Carbon;
 use Illuminate\Database\DatabaseManager;
 
 class LeaveRequestService
 {
+    private const DEFAULT_ALLOWANCE = [
+        'annual' => 21,
+        'sick' => 10,
+        'personal' => 5,
+        'other' => 0,
+    ];
+
     public function __construct(
         private readonly DatabaseManager $db,
         private readonly AuditWriterService $auditWriter,
     ) {
+    }
+
+    private function ensureCreditsExistForYear(int $employeeId, int $year): void
+    {
+        $types = ['annual', 'sick', 'personal', 'other'];
+
+        foreach ($types as $type) {
+            LeaveCredit::query()->firstOrCreate(
+                [
+                    'employee_id' => $employeeId,
+                    'year' => $year,
+                    'leave_type' => $type,
+                ],
+                [
+                    'total_days' => self::DEFAULT_ALLOWANCE[$type] ?? 0,
+                    'used_days' => 0,
+                ],
+            );
+        }
+    }
+
+    private function deductCreditsForApproval(LeaveRequest $request, User $approver): void
+    {
+        if (!$request->employee_id) {
+            return;
+        }
+
+        $days = $request->start_date->diffInDays($request->end_date) + 1;
+        $year = (int) $request->start_date->year;
+
+        $this->ensureCreditsExistForYear($request->employee_id, $year);
+
+        $credit = LeaveCredit::query()
+            ->where('employee_id', $request->employee_id)
+            ->where('year', $year)
+            ->where('leave_type', $request->leave_type)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$credit) {
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'Leave credit is not configured.');
+        }
+
+        if ($credit->remainingDays() < $days) {
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'Insufficient leave balance.');
+        }
+
+        $before = ['used_days' => $credit->used_days, 'total_days' => $credit->total_days];
+        $credit->used_days = $credit->used_days + $days;
+        $credit->save();
+
+        $this->auditWriter->log(
+            $approver->id,
+            'leave.credit.deducted',
+            LeaveCredit::class,
+            $credit->id,
+            $before,
+            [
+                'used_days' => $credit->used_days,
+                'total_days' => $credit->total_days,
+                'leave_request_id' => $request->id,
+                'deducted_days' => $days,
+            ],
+            null,
+        );
     }
 
     public function createRequest(User $user, array $data): LeaveRequest
@@ -83,6 +156,8 @@ class LeaveRequestService
             }
 
             if ($oldStatus === 'pending_hr') {
+                $this->deductCreditsForApproval($request, $approver);
+
                 $request->status = 'approved';
                 $request->hr_approved_by = $approver->id;
                 $request->hr_approved_at = now();
@@ -134,21 +209,26 @@ class LeaveRequestService
 
     public function calculateBalance(User $user, string $leaveType, int $year): int
     {
-        $totalDays = LeaveRequest::query()
+        $employeeId = Employee::query()
             ->where('user_id', $user->id)
+            ->value('id');
+
+        if (!$employeeId) {
+            return 0;
+        }
+
+        $this->ensureCreditsExistForYear($employeeId, $year);
+
+        $credit = LeaveCredit::query()
+            ->where('employee_id', $employeeId)
+            ->where('year', $year)
             ->where('leave_type', $leaveType)
-            ->where('status', 'approved')
-            ->whereYear('start_date', $year)
-            ->get()
-            ->sum(fn (LeaveRequest $r): int => $r->start_date->diffInDays($r->end_date) + 1);
+            ->first();
 
-        $defaultAllowance = match ($leaveType) {
-            'annual' => 21,
-            'sick' => 10,
-            'personal' => 5,
-            default => 0,
-        };
+        if (!$credit) {
+            return 0;
+        }
 
-        return max(0, $defaultAllowance - $totalDays);
+        return $credit->remainingDays();
     }
 }

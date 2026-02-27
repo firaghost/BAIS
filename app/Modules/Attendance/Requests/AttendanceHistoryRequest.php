@@ -19,7 +19,6 @@ class AttendanceHistoryRequest extends FormRequest
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'status' => ['nullable', 'string', 'in:checked_in,checked_out'],
-            'branch_id' => ['nullable', 'integer', 'min:1', 'exists:branches,id'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }
@@ -43,13 +42,6 @@ class AttendanceHistoryRequest extends FormRequest
         $value = $this->validated('status');
 
         return is_string($value) ? $value : null;
-    }
-
-    public function branchId(): ?int
-    {
-        $value = $this->validated('branch_id');
-
-        return is_numeric($value) ? (int) $value : null;
     }
 
     public function perPage(): int

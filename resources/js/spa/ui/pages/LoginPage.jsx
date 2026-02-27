@@ -3,15 +3,24 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { api } from '../lib/api.js';
 
-function getDeviceIdentifier() {
+function normalizeLoginKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+}
+
+function getDeviceIdentifier(loginKey) {
     try {
-        const existing = localStorage.getItem('bais_device_identifier');
+        const normalized = normalizeLoginKey(loginKey) || 'anonymous';
+        const storageKey = `bais_device_identifier:${normalized}`;
+        const existing = localStorage.getItem(storageKey);
         if (existing) {
             return existing;
         }
 
         const value = `web-${crypto.randomUUID()}`;
-        localStorage.setItem('bais_device_identifier', value);
+        localStorage.setItem(storageKey, value);
         return value;
     } catch {
         return `web-${Math.random().toString(16).slice(2)}`;
@@ -35,7 +44,7 @@ export function LoginPage() {
         setLoading(true);
 
         try {
-            const deviceIdentifier = getDeviceIdentifier();
+            const deviceIdentifier = getDeviceIdentifier(login);
 
             const res = await api.post('/api/auth/login', {
                 login,
@@ -53,6 +62,17 @@ export function LoginPage() {
 
             try {
                 localStorage.setItem('bais_token', token);
+            } catch {
+                // ignore
+            }
+
+            try {
+                const me = await api.get('/api/auth/me');
+                const roles = Array.isArray(me?.data?.roles) ? me.data.roles : [];
+                if (roles.includes('super-admin')) {
+                    navigate('/super-admin/dashboard', { replace: true });
+                    return;
+                }
             } catch {
                 // ignore
             }

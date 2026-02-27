@@ -51,10 +51,13 @@ class AuthController extends Controller
             ], 401);
         }
 
+        $user = $result['user'];
+        $user->load('employee');
+
         return response()->json([
             'token' => $result['token'],
-            'user' => $result['user'],
-            'must_change_password' => (bool) ($result['user']->must_change_password ?? false),
+            'user' => $user,
+            'must_change_password' => (bool) ($user->must_change_password ?? false),
         ]);
     }
 

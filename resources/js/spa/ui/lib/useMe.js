@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { safeGet } from './api.js';
 
@@ -29,10 +29,18 @@ export function useMe() {
         };
     }, []);
 
+    const roles = useMemo(() => {
+        return Array.isArray(state.data?.roles) ? state.data.roles : [];
+    }, [state.data]);
+
+    const user = useMemo(() => {
+        return state.data?.user ?? null;
+    }, [state.data]);
+
     return {
         status: state.status,
         me: state.data,
-        roles: Array.isArray(state.data?.roles) ? state.data.roles : [],
-        user: state.data?.user ?? null,
+        roles,
+        user,
     };
 }

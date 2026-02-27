@@ -1,27 +1,29 @@
 import '../models/attendance_log.dart';
+import '../models/head_office_geofence.dart';
 import 'api_service.dart';
 
 class AttendanceService {
   final ApiService _api = ApiService();
 
+  Future<HeadOfficeGeoFence> getHeadOfficeGeoFence() async {
+    final result = await _api.get('/attendance/head-office-geo');
+    return HeadOfficeGeoFence.fromJson(result['data'] as Map<String, dynamic>);
+  }
+
   Future<AttendanceLog> checkIn({
-    required int branchId,
     required double latitude,
     required double longitude,
   }) async {
-    final result = await _api.post('/attendance/check-in', body: {
-      'branch_id': branchId,
-      'latitude': latitude,
-      'longitude': longitude,
-    });
+    final result = await _api.post(
+      '/attendance/check-in',
+      body: {'latitude': latitude, 'longitude': longitude},
+    );
 
     return AttendanceLog.fromJson(result['data'] as Map<String, dynamic>);
   }
 
-  Future<AttendanceLog> checkOut({required int branchId}) async {
-    final result = await _api.post('/attendance/check-out', body: {
-      'branch_id': branchId,
-    });
+  Future<AttendanceLog> checkOut() async {
+    final result = await _api.post('/attendance/check-out');
 
     return AttendanceLog.fromJson(result['data'] as Map<String, dynamic>);
   }
@@ -33,9 +35,7 @@ class AttendanceService {
     int? branchId,
     int perPage = 20,
   }) async {
-    final params = <String, String>{
-      'per_page': perPage.toString(),
-    };
+    final params = <String, String>{'per_page': perPage.toString()};
     if (from != null) params['from'] = from;
     if (to != null) params['to'] = to;
     if (status != null) params['status'] = status;

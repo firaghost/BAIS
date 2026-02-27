@@ -1,0 +1,5 @@
+Width: 600, Height: 300
+Non-transparent bounds: (150, 0) to (449, 299)
+Center pixel: R=39, G=150, B=42, A=255
+Edge inside bound y+10: R=255, G=255, B=255, A=255
+Avg color of non-transparent: R=146, G=214, B=199

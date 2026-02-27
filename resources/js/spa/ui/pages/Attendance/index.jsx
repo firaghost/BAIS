@@ -1,1 +1,1 @@
-export { AttendancePage } from '../AttendancePage.jsx';
+export { RoleBasedAttendancePage as AttendancePage } from './RoleBasedAttendancePage.jsx';
