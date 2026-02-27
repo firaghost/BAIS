@@ -68,3 +68,48 @@
          return 'Optimized!';
      });
      ```
+
+---
+
+# cPanel Deployment Guide for React SPA (Frontend)
+
+This guide is for the frontend React application (`att.mirachpos.com`).
+
+1. **Build Locally:**
+   On your local machine, run the build command to generate the production-ready files:
+   ```bash
+   npm run build
+   ```
+   *This uses `vite.spa.config.js` to create the `dist/` directory.*
+
+2. **Upload to cPanel:**
+   - Log into cPanel.
+   - Open **File Manager**.
+   - Navigate to the folder mapped to your frontend domain (e.g., `att.mirachpos.com`).
+   - Upload ONLY the **contents** of the `dist/` folder (assets, index.html, etc.).
+   - **Do NOT upload the whole project root (no node_modules, no src, etc.).**
+
+3. **Configure `.htaccess` for Routing:**
+   React uses client-side routing. If you refresh a page (like `/employees`), cPanel will try to find an `employees` file and return 404.
+   Create a `.htaccess` file in the root of your frontend folder (where `index.html` is) with this content:
+   ```apache
+   <IfModule mod_rewrite.c>
+     RewriteEngine On
+     RewriteBase /
+     RewriteRule ^index\.html$ - [L]
+     RewriteCond %{REQUEST_FILENAME} !-f
+     RewriteCond %{REQUEST_FILENAME} !-d
+     RewriteCond %{REQUEST_FILENAME} !-l
+     RewriteRule . /index.html [L]
+   </IfModule>
+   ```
+
+4. **MIME Type Issues (Fix for `application/octet-stream`):**
+   The error `main.jsx:1 Failed to load module script` happens because:
+   - You are trying to serve `.jsx` files (Source code). Browsers only support `.js` modules.
+   - cPanel doesn't recognize `.jsx` as JavaScript.
+   **Solution:** Follow Step 1 and 2 above. The `dist/` folder will contain transpiled `.js` files that cPanel and browsers understand perfectly.
+
+5. **Do you need to "start" anything?**
+   - **No.** For a static SPA (built with Vite), cPanel's Apache server serves the files directly. You do not need to run a "Node.js Node App" or `npm start` on the server.
+   - The frontend communicates with the backend via the API URL configured during the build.

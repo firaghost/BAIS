@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
@@ -18,10 +20,17 @@ import 'widgets/app_bottom_nav_bar.dart';
 Future<void> main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
-
-  await NotificationService().init();
-  await NotificationService().scheduleFixedMorningCheckInRemindersMonSat();
   runApp(const BAISApp());
+
+  unawaited(_bootstrapNotifications());
+}
+
+Future<void> _bootstrapNotifications() async {
+  try {
+    final service = NotificationService();
+    await service.init();
+    await service.scheduleFixedMorningCheckInRemindersMonSat();
+  } catch (_) {}
 }
 
 class BAISApp extends StatelessWidget {

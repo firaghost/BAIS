@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -92,15 +93,12 @@ class NotificationService {
           minute: t.minute,
         );
 
-        await _plugin.zonedSchedule(
-          _fixedReminderId(weekday: weekday, index: idx),
-          'Clock-in reminder',
-          'Check in in ${t.offsetMinutes} minutes.',
-          scheduled,
-          details,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
+        await _zonedScheduleWithFallback(
+          id: _fixedReminderId(weekday: weekday, index: idx),
+          title: 'Clock-in reminder',
+          body: 'Check in in ${t.offsetMinutes} minutes.',
+          scheduledDate: scheduled,
+          notificationDetails: details,
           matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
         );
       }
@@ -156,17 +154,53 @@ class NotificationService {
       ),
     );
 
-    await _plugin.zonedSchedule(
-      _clockInNotificationId,
-      'Clock-in reminder',
-      'Your shift starts soon. Don\'t forget to clock in.',
-      scheduled,
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+    await _zonedScheduleWithFallback(
+      id: _clockInNotificationId,
+      title: 'Clock-in reminder',
+      body: 'Your shift starts soon. Don\'t forget to clock in.',
+      scheduledDate: scheduled,
+      notificationDetails: details,
       matchDateTimeComponents: DateTimeComponents.time,
     );
+  }
+
+  Future<void> _zonedScheduleWithFallback({
+    required int id,
+    required String title,
+    required String body,
+    required tz.TZDateTime scheduledDate,
+    required NotificationDetails notificationDetails,
+    required DateTimeComponents matchDateTimeComponents,
+  }) async {
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduledDate,
+        notificationDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: matchDateTimeComponents,
+      );
+    } on PlatformException catch (e) {
+      if (e.code != 'exact_alarms_not_permitted') {
+        rethrow;
+      }
+
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduledDate,
+        notificationDetails,
+        androidScheduleMode: AndroidScheduleMode.inexact,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: matchDateTimeComponents,
+      );
+    }
   }
 
   tz.TZDateTime? _nextOccurrence(String startTime, int minutesBefore) {
