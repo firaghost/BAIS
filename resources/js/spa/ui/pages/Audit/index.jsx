@@ -1,1 +1,1 @@
-export { AuditPage } from '../AuditPage.jsx';
+export { AuditPage } from './AuditPage.jsx';

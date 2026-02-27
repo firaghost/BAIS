@@ -152,6 +152,52 @@ class AttendanceService
         return $query->paginate($perPage);
     }
 
+    public function weeklySummary(User $user): array
+    {
+        $start = Carbon::now()->startOfWeek(Carbon::MONDAY)->startOfDay();
+        $end = Carbon::now()->endOfWeek(Carbon::SUNDAY)->endOfDay();
+
+        $logs = AttendanceLog::query()
+            ->where('user_id', $user->id)
+            ->whereBetween('log_date', [$start->toDateString(), $end->toDateString()])
+            ->get(['log_date', 'check_in_time', 'check_out_time']);
+
+        $workedSeconds = 0;
+        $daysPresent = [];
+
+        foreach ($logs as $log) {
+            if ($log->check_in_time) {
+                $daysPresent[$log->log_date->toDateString()] = true;
+            }
+
+            if ($log->check_in_time && $log->check_out_time) {
+                $diff = $log->check_in_time->diffInSeconds($log->check_out_time, false);
+                if ($diff > 0) {
+                    $workedSeconds += $diff;
+                }
+            }
+        }
+
+        $workingDaysTotal = 0;
+        $cursor = $start->copy()->startOfDay();
+        while ($cursor->lessThanOrEqualTo($end)) {
+            $isWeekend = $cursor->isSaturday() || $cursor->isSunday();
+            if (!$isWeekend) {
+                $workingDaysTotal++;
+            }
+            $cursor->addDay();
+        }
+
+        return [
+            'week_start' => $start->toDateString(),
+            'week_end' => $end->toDateString(),
+            'worked_seconds' => $workedSeconds,
+            'worked_hours' => round($workedSeconds / 3600, 1),
+            'days_present' => count($daysPresent),
+            'days_total' => $workingDaysTotal,
+        ];
+    }
+
     public function manageIndex(
         ?string $from,
         ?string $to,

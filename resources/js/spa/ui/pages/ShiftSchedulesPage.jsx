@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-import { Panel } from '../components/Panel.jsx';
+import { Panel } from '../shared/ui/Panel.jsx';
 import { safeGet } from '../lib/api.js';
 
 export function ShiftSchedulesPage() {

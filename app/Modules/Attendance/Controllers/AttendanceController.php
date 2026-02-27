@@ -62,6 +62,23 @@ class AttendanceController extends Controller
         return response()->json(['data' => $updated]);
     }
 
+    public function today(): JsonResponse
+    {
+        $actor = request()->user();
+
+        if (!$actor) {
+            throw new AuthenticationException('Unauthenticated.');
+        }
+
+        $today = \Illuminate\Support\Carbon::today()->toDateString();
+        $log = AttendanceLog::where('user_id', $actor->id)
+            ->whereDate('log_date', $today)
+            ->latest()
+            ->first();
+
+        return response()->json(['data' => $log]);
+    }
+
     public function history(AttendanceHistoryRequest $request): JsonResponse
     {
         $actor = $request->user();
@@ -79,6 +96,19 @@ class AttendanceController extends Controller
         );
 
         return response()->json(['data' => $result]);
+    }
+
+    public function weeklySummary(): JsonResponse
+    {
+        $actor = request()->user();
+
+        if (!$actor) {
+            throw new AuthenticationException('Unauthenticated.');
+        }
+
+        $summary = $this->attendanceService->weeklySummary($actor);
+
+        return response()->json(['data' => $summary]);
     }
 
     public function manageIndex(AttendanceManageIndexRequest $request): JsonResponse

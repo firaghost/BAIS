@@ -1,5 +1,4 @@
 ﻿import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -11,7 +10,7 @@ import '../providers/attendance_provider.dart';
 import '../services/attendance_service.dart';
 import '../models/head_office_geofence.dart';
 import '../theme/app_theme.dart';
-import 'notifications_screen.dart';
+import '../widgets/app_header.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -42,13 +41,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return a;
   }
 
-  String _formatDistance(double meters) {
-    if (meters >= 1000) {
-      return '${(meters / 1000).toStringAsFixed(1)} km';
-    }
-    return '${meters.toStringAsFixed(0)} m';
-  }
-
   @override
   void initState() {
     super.initState();
@@ -69,6 +61,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final attendance = context.read<AttendanceProvider>();
     attendance.loadShifts();
     attendance.loadHistory();
+    // Always fetch today's log separately for accurate check-in state
+    attendance.loadTodayLog();
+    attendance.loadWeeklySummary();
   }
 
   Future<void> _loadHeadOfficeGeoFence() async {
@@ -85,6 +80,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       setState(() => _headOffice = geo);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _mapController.move(LatLng(geo.latitude, geo.longitude), 17.0);
+      });
       _recomputeDistance();
     } catch (_) {}
   }
@@ -94,6 +93,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await Future.wait([
       attendance.loadShifts(),
       attendance.loadHistory(),
+      attendance.loadTodayLog(),
+      attendance.loadWeeklySummary(),
       _refreshCurrentLocation(),
       _loadHeadOfficeGeoFence(),
     ]);
@@ -158,17 +159,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (attendance.isCheckedIn) {
         if (attendance.todayLog?.checkInTime != null) {
           final checkInTimeString = attendance.todayLog!.checkInTime!;
-          // Combine today with the parsed time to formulate a proper DateTime object
-          final parts = checkInTimeString.split(':');
-          if (parts.length >= 2) {
-            final checkInTime = DateTime(
-              now.year,
-              now.month,
-              now.day,
-              int.tryParse(parts[0]) ?? now.hour,
-              int.tryParse(parts[1]) ?? now.minute,
-              parts.length > 2 ? (int.tryParse(parts[2]) ?? 0) : 0,
-            );
+
+          final parsed = DateTime.tryParse(checkInTimeString);
+          if (parsed != null) {
+            final checkInTime = parsed.toLocal();
             setState(() {
               _timerDuration = now.difference(checkInTime);
               _timerLabel = 'WORKED';
@@ -252,11 +246,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Geolocator.getPositionStream(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.bestForNavigation,
-            distanceFilter: 5,
+            distanceFilter: 2,
           ),
         ).listen((pos) {
           if (!mounted) return;
-          setState(() => _currentPosition = pos);
+          setState(() {
+            _currentPosition = pos;
+          });
+
+          _mapController.move(LatLng(pos.latitude, pos.longitude), 16.0);
           _recomputeDistance();
         });
   }
@@ -349,6 +347,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _handleCheckOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Check Out'),
+        content: const Text('Are you sure you want to check out now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('Check Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Read provider before any async gap
     final attendance = context.read<AttendanceProvider>();
 
     await _refreshCurrentLocation();
@@ -397,8 +417,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? '.${user!.employee!.lastName[0]}'
         : '';
     final jobTitle = user?.employee?.jobTitle ?? 'Employee';
-    final hasProfileImage =
-        auth.profileImagePath != null && auth.profileImagePath!.isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppTheme.background(context),
@@ -414,65 +432,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 const SizedBox(height: 8),
                 // App Bar
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: AppTheme.primaryBlue,
-                      backgroundImage: hasProfileImage
-                          ? FileImage(File(auth.profileImagePath!))
-                          : null,
-                      child: hasProfileImage
-                          ? null
-                          : Text(
-                              firstName.isNotEmpty
-                                  ? firstName[0].toUpperCase()
-                                  : 'E',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Dashboard',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary(context),
-                      ),
-                    ),
-                    const Spacer(),
-                    Stack(
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            Icons.notifications_outlined,
-                            color: AppTheme.textPrimary(context),
-                          ),
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const NotificationsScreen(),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.error,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                const AppHeader(title: 'Dashboard'),
                 const SizedBox(height: 16),
 
                 // Greeting Card
@@ -481,7 +441,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF303F9F), Color(0xFF3949AB)],
+                      colors: [Color(0xFF0B1120), Color(0xFF1E3A8A)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -577,118 +537,367 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Shift Info
-                if (shift != null) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Morning Shift',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary(context),
-                            ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        '${shift.formattedStartTime} - ${shift.formattedEndTime}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.textSecondary(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
+                Builder(
+                  builder: (context) {
+                    final todayLog = attendance.todayLog;
+                    final needsCheckOut =
+                        todayLog != null && todayLog.checkOutTime == null;
+                    final isWorking = needsCheckOut;
 
-                // Countdown Timer
-                Center(
-                  child: SizedBox(
-                    width: 160,
-                    height: 160,
-                    child: CustomPaint(
-                      painter: _CountdownPainter(
-                        progress:
-                            _timerLabel == 'WORKED' ||
-                                _timerDuration.inSeconds > 0
-                            ? min(1.0, _timerDuration.inSeconds / 3600.0)
-                            : 0.0,
-                        dividerColor: AppTheme.divider(context),
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              !(_timerDuration.inSeconds == 0 &&
-                                      _timerLabel == 'NO SHIFT')
-                                  ? '${_timerDuration.inHours.toString().padLeft(2, '0')}:${(_timerDuration.inMinutes % 60).toString().padLeft(2, '0')}:${(_timerDuration.inSeconds % 60).toString().padLeft(2, '0')}'
-                                  : '00:00:00',
-                              style: Theme.of(context).textTheme.headlineMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.textPrimary(context),
-                                  ),
-                            ),
-                            Text(
-                              _timerLabel,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: AppTheme.textSecondary(context),
-                                    letterSpacing: 1.5,
-                                  ),
+                    if (shift == null) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: AppTheme.card(context),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.divider(context)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 14,
+                              offset: const Offset(0, 6),
                             ),
                           ],
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Check In/Out Button
-                Center(
-                  child: SizedBox(
-                    width: 220,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: attendance.isCheckingIn
-                          ? null
-                          : attendance.isCheckedIn
-                          ? _handleCheckOut
-                          : _handleCheckIn,
-                      icon: Icon(
-                        attendance.isCheckedIn ? Icons.logout : Icons.login,
-                        size: 20,
-                      ),
-                      label: Text(
-                        attendance.isCheckingIn
-                            ? 'Processing...'
-                            : attendance.isCheckedIn
-                            ? 'Check Out'
-                            : 'Check In',
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: attendance.isCheckedIn
-                            ? AppTheme.warning
-                            : AppTheme.primaryBlue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.access_time,
+                                  color: AppTheme.primaryBlue,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Attendance',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.textPrimary(context),
+                                        ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.card2(
+                                      context,
+                                    ).withValues(alpha: 0.55),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: AppTheme.divider(context),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    isWorking ? 'Working' : 'Not Checked In',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textSecondary(context),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            if (isWorking) ...[
+                              Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${_timerDuration.inHours.toString().padLeft(2, '0')}:${(_timerDuration.inMinutes % 60).toString().padLeft(2, '0')}:${(_timerDuration.inSeconds % 60).toString().padLeft(2, '0')}',
+                                      style: TextStyle(
+                                        color: AppTheme.textPrimary(context),
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'WORKED',
+                                      style: TextStyle(
+                                        color: AppTheme.textSecondary(context),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 2.0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            SizedBox(
+                              height: 54,
+                              child: ElevatedButton.icon(
+                                onPressed: attendance.isCheckingIn
+                                    ? null
+                                    : needsCheckOut
+                                    ? _handleCheckOut
+                                    : _handleCheckIn,
+                                icon: attendance.isCheckingIn
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Icon(
+                                        needsCheckOut
+                                            ? Icons.logout_rounded
+                                            : Icons.login_rounded,
+                                        size: 20,
+                                      ),
+                                label: Text(
+                                  attendance.isCheckingIn
+                                      ? 'Processing...'
+                                      : needsCheckOut
+                                      ? 'Check Out'
+                                      : 'Check In Now',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryBlue,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                      );
+                    }
+
+                    final shiftLabel = 'Morning Shift';
+                    final shiftRange =
+                        '${shift.formattedStartTime} - ${shift.formattedEndTime}';
+
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: AppTheme.card(context),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppTheme.divider(context)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.wb_sunny_outlined,
+                                color: AppTheme.primaryBlue,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  shiftLabel,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.textPrimary(context),
+                                      ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.card2(
+                                    context,
+                                  ).withValues(alpha: 0.55),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: AppTheme.divider(context),
+                                  ),
+                                ),
+                                child: Text(
+                                  shiftRange,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary(context),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: 176,
+                            height: 176,
+                            child: CustomPaint(
+                              painter: _CountdownPainter(
+                                progress:
+                                    _timerLabel == 'WORKED' &&
+                                        _timerDuration.inSeconds > 0
+                                    ? min(
+                                        1.0,
+                                        _timerDuration.inSeconds / 28800.0,
+                                      )
+                                    : 0.75,
+                                dividerColor: AppTheme.divider(context),
+                                activeColor: AppTheme.primaryBlue,
+                              ),
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '${_timerDuration.inHours.toString().padLeft(2, '0')}:${(_timerDuration.inMinutes % 60).toString().padLeft(2, '0')}',
+                                      style: TextStyle(
+                                        color: AppTheme.textPrimary(context),
+                                        fontSize: 34,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _timerLabel,
+                                      style: TextStyle(
+                                        color: AppTheme.textSecondary(context),
+                                        fontSize: 10,
+                                        letterSpacing: 2.0,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    if (isWorking)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.success.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: AppTheme.success.withValues(
+                                              alpha: 0.25,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.success,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'ACTIVE',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.success,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: ElevatedButton.icon(
+                              onPressed: attendance.isCheckingIn
+                                  ? null
+                                  : needsCheckOut
+                                  ? _handleCheckOut
+                                  : _handleCheckIn,
+                              icon: attendance.isCheckingIn
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Icon(
+                                      needsCheckOut
+                                          ? Icons.logout_rounded
+                                          : Icons.login_rounded,
+                                      size: 20,
+                                    ),
+                              label: Text(
+                                attendance.isCheckingIn
+                                    ? 'Processing...'
+                                    : needsCheckOut
+                                    ? 'Check Out'
+                                    : 'Check In Now',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryBlue,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
 
                 // Map Preview
                 Container(
                   width: double.infinity,
-                  height: 200,
+                  height: 210,
                   decoration: BoxDecoration(
                     color: AppTheme.card(context),
                     borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.divider(context)),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Stack(
@@ -703,8 +912,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             initialZoom: 16.0,
                             interactionOptions: const InteractionOptions(
-                              flags:
-                                  InteractiveFlag.all & ~InteractiveFlag.rotate,
+                              flags: InteractiveFlag.none,
                             ),
                           ),
                           children: [
@@ -721,8 +929,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       _headOffice!.latitude,
                                       _headOffice!.longitude,
                                     ),
-                                    color: AppTheme.primaryBlue.withValues(alpha: 0.15),
-                                    borderColor: AppTheme.primaryBlue.withValues(alpha: 0.5),
+                                    color: AppTheme.primaryBlue.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    borderColor: AppTheme.primaryBlue
+                                        .withValues(alpha: 0.55),
                                     borderStrokeWidth: 2,
                                     useRadiusInMeter: true,
                                     radius: _radiusMeters!,
@@ -754,19 +965,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   height: 40,
                                   child: Center(
                                     child: Container(
-                                      width: 18,
-                                      height: 18,
+                                      width: 14,
+                                      height: 14,
                                       decoration: BoxDecoration(
-                                        color: Colors.blue,
+                                        color: AppTheme.info,
                                         shape: BoxShape.circle,
                                         border: Border.all(
-                                            color: Colors.white, width: 3),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Colors.black26,
-                                            blurRadius: 4,
-                                          ),
-                                        ],
+                                          color: Colors.white,
+                                          width: 3,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -795,93 +1002,102 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ],
                           ),
                         ),
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.3),
-                            ],
+
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.55),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
+
                       Positioned(
                         left: 12,
-                        bottom: 12,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        right: 12,
+                        bottom: 44,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            if (_headOffice != null)
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 6),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Current Location',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.2,
+                                  ),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                const SizedBox(height: 6),
+                                Row(
                                   children: [
-                                    Icon(
-                                      Icons.business,
-                                      color: AppTheme.primaryBlue,
-                                      size: 14,
+                                    const Icon(
+                                      Icons.location_on,
+                                      color: Colors.white,
+                                      size: 18,
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      'Head Office',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.black87,
-                                            fontSize: 11,
-                                          ),
+                                      _isInRange
+                                          ? 'Head Office'
+                                          : 'Outside Perimeter',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
+                              ],
+                            ),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
-                                vertical: 4,
+                                vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.white.withValues(alpha: 0.9),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
-                                    width: 10,
-                                    height: 10,
+                                    width: 6,
+                                    height: 6,
                                     decoration: BoxDecoration(
-                                      color: Colors.blue,
+                                      color: _isInRange
+                                          ? AppTheme.success
+                                          : AppTheme.error,
                                       shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: AppTheme.primaryBlue,
-                                          width: 2),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 6),
                                   Text(
-                                    'You are here',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black87,
-                                          fontSize: 11,
-                                        ),
+                                    _distanceMeters == null
+                                        ? '--'
+                                        : '${_distanceMeters!.toStringAsFixed(0)}m Away',
+                                    style: const TextStyle(
+                                      color: Colors.black87,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -889,160 +1105,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ],
                         ),
                       ),
+
                       Positioned(
-                        right: 8,
-                        bottom: 8,
-                        child: FloatingActionButton.small(
-                          heroTag: 'recenter_dash_map',
-                          backgroundColor: Colors.white,
-                          onPressed: () {
-                            if (_currentPosition != null) {
-                              _mapController.move(
-                                LatLng(
-                                  _currentPosition!.latitude,
-                                  _currentPosition!.longitude,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          color: Colors.black.withValues(alpha: 0.18),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color:
+                                      (_isInRange
+                                              ? AppTheme.success
+                                              : AppTheme.error)
+                                          .withValues(alpha: 0.18),
+                                  shape: BoxShape.circle,
                                 ),
-                                16.0,
-                              );
-                            }
-                          },
-                          child: Icon(
-                            Icons.my_location,
-                            color: AppTheme.primaryBlue,
-                            size: 20,
+                                child: Icon(
+                                  Icons.verified,
+                                  size: 16,
+                                  color: _isInRange
+                                      ? AppTheme.success
+                                      : AppTheme.error,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                _isInRange
+                                    ? 'Within Perimeter'
+                                    : 'Outside Perimeter',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                (_accuracyMeters != null &&
+                                        _accuracyMeters! <= 35)
+                                    ? 'GPS Signal Strong'
+                                    : 'GPS Signal Weak',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
-
-                // Location Status
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Location Status',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: AppTheme.textSecondary(context),
-                                ),
-                          ),
-                          Text(
-                            _currentPosition != null && _headOffice != null
-                                ? (_isInRange
-                                      ? 'Within range of Head Office'
-                                      : 'Outside Head Office range')
-                                : 'Checking location...',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textPrimary(context),
-                                ),
-                          ),
-                          if (_currentPosition != null && _headOffice != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                _distanceMeters != null && _radiusMeters != null
-                                    ? 'Dist: ${_formatDistance(_distanceMeters!)} • Rad: ${_formatDistance(_radiusMeters!)}${_accuracyMeters != null ? ' • Acc: ±${_formatDistance(_accuracyMeters!)}' : ''}'
-                                    : (_accuracyMeters != null
-                                          ? 'Accuracy: ±${_accuracyMeters!.toStringAsFixed(0)} m'
-                                          : ''),
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: AppTheme.textSecondary(context),
-                                    ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          if (_headOffice != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                'Head Office: ${_headOffice!.latitude.toStringAsFixed(6)}, ${_headOffice!.longitude.toStringAsFixed(6)}',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: AppTheme.textSecondary(context),
-                                    ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 1,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color:
-                              (_currentPosition != null &&
-                                  _headOffice != null &&
-                                  _isInRange)
-                              ? AppTheme.success.withValues(alpha: 0.1)
-                              : AppTheme.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color:
-                                    (_currentPosition != null &&
-                                        _headOffice != null)
-                                    ? (_isInRange
-                                          ? AppTheme.success
-                                          : AppTheme.error)
-                                    : AppTheme.textLight(context),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                _currentPosition != null && _headOffice != null
-                                    ? (_isInRange ? 'In Range' : 'Out of Range')
-                                    : 'Checking...',
-                                style: TextStyle(
-                                  color:
-                                      (_currentPosition != null &&
-                                          _headOffice != null)
-                                      ? (_isInRange
-                                            ? AppTheme.success
-                                            : AppTheme.error)
-                                      : AppTheme.textLight(context),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 24),
 
-                // Weekly Summary
                 Text(
                   'Weekly Summary',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -1051,25 +1177,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _SummaryCard(
-                        icon: Icons.access_time,
-                        value:
-                            '${attendance.weeklyHoursWorked.toStringAsFixed(1)}h',
-                        label: 'Hours Worked',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _SummaryCard(
-                        icon: Icons.calendar_today,
-                        value: '${attendance.weeklyDaysPresent}/6',
-                        label: 'Days Present',
-                      ),
-                    ),
-                  ],
+                Builder(
+                  builder: (context) {
+                    final summary = attendance.weeklySummary;
+                    final isLoading = attendance.isWeeklySummaryLoading;
+
+                    final hoursText = summary != null
+                        ? '${summary.workedHours.toStringAsFixed(1)}h'
+                        : isLoading
+                        ? '--'
+                        : '—';
+
+                    final daysText = summary != null
+                        ? '${summary.daysPresent}/${summary.daysTotal}'
+                        : isLoading
+                        ? '--'
+                        : '—';
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: _SummaryCard(
+                            icon: Icons.access_time,
+                            value: hoursText,
+                            label: 'Hours Worked',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _SummaryCard(
+                            icon: Icons.calendar_today,
+                            value: daysText,
+                            label: 'Days Present',
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
               ],
@@ -1145,8 +1289,13 @@ class _SummaryCard extends StatelessWidget {
 class _CountdownPainter extends CustomPainter {
   final double progress;
   final Color dividerColor;
+  final Color? activeColor;
 
-  _CountdownPainter({required this.progress, required this.dividerColor});
+  _CountdownPainter({
+    required this.progress,
+    required this.dividerColor,
+    this.activeColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1160,7 +1309,7 @@ class _CountdownPainter extends CustomPainter {
     canvas.drawCircle(center, radius, bgPaint);
 
     final progressPaint = Paint()
-      ..color = AppTheme.primaryBlue
+      ..color = activeColor ?? AppTheme.primaryBlue
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round;
@@ -1175,5 +1324,6 @@ class _CountdownPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CountdownPainter oldDelegate) =>
-      oldDelegate.progress != progress;
+      oldDelegate.progress != progress ||
+      oldDelegate.activeColor != activeColor;
 }

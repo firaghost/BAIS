@@ -17,6 +17,120 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final AuthService _authService = AuthService();
 
+  void _showAutoLogoutSheet(AuthProvider auth) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.card(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final current = auth.autoLogoutMinutes;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.divider(ctx),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Auto Logout',
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary(ctx),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Choose how long the app can stay idle before signing you out.',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.textSecondary(ctx),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _autoLogoutOption(
+                  ctx,
+                  label: '30 minutes (default)',
+                  valueMinutes: 30,
+                  selectedMinutes: current,
+                  onSelect: () => auth.setAutoLogoutMinutes(30),
+                ),
+                _autoLogoutOption(
+                  ctx,
+                  label: '1 hour',
+                  valueMinutes: 60,
+                  selectedMinutes: current,
+                  onSelect: () => auth.setAutoLogoutMinutes(60),
+                ),
+                _autoLogoutOption(
+                  ctx,
+                  label: '8 hours',
+                  valueMinutes: 480,
+                  selectedMinutes: current,
+                  onSelect: () => auth.setAutoLogoutMinutes(480),
+                ),
+                _autoLogoutOption(
+                  ctx,
+                  label: 'Never',
+                  valueMinutes: null,
+                  selectedMinutes: current,
+                  onSelect: () => auth.setAutoLogoutMinutes(null),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Done'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _autoLogoutOption(
+    BuildContext context, {
+    required String label,
+    required int? valueMinutes,
+    required int? selectedMinutes,
+    required VoidCallback onSelect,
+  }) {
+    final selected = valueMinutes == selectedMinutes;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_off,
+        color: selected ? AppTheme.primaryBlue : AppTheme.textLight(context),
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: AppTheme.textPrimary(context),
+          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+        ),
+      ),
+      onTap: () {
+        Navigator.pop(context);
+        onSelect();
+      },
+    );
+  }
+
   Future<void> _reloadProfile() async {
     final auth = context.read<AuthProvider>();
     await auth.init();
@@ -753,6 +867,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           indent: 56,
                         ),
                       ],
+
+                      _settingsTile(
+                        Icons.timer_outlined,
+                        'Auto Logout',
+                        (auth.autoLogoutMinutes == null)
+                            ? 'Never'
+                            : auth.autoLogoutMinutes == 30
+                            ? '30 minutes (default)'
+                            : auth.autoLogoutMinutes == 60
+                            ? '1 hour'
+                            : auth.autoLogoutMinutes == 480
+                            ? '8 hours'
+                            : '${auth.autoLogoutMinutes} min',
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          color: Colors.grey,
+                        ),
+                        onTap: () => _showAutoLogoutSheet(auth),
+                      ),
+                      Divider(
+                        color: AppTheme.divider(context),
+                        height: 1,
+                        indent: 56,
+                      ),
                       _settingsTile(
                         Icons.notifications_outlined,
                         'Notifications',

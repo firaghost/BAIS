@@ -1,1 +1,1 @@
-export { ReportsPage } from '../ReportsPage.jsx';
+export { ReportsPage } from './ReportsPage.jsx';

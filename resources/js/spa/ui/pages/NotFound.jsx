@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-import { Panel } from '../components/Panel.jsx';
+import { Panel } from '../shared/ui/Panel.jsx';
 
 export function NotFound() {
     return (

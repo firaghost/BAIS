@@ -12,6 +12,9 @@ class AuthProvider extends ChangeNotifier {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final LocalAuthentication _localAuth = LocalAuthentication();
 
+  static const _autoLogoutKey = 'auto_logout_minutes';
+  static const _lastActiveKey = 'last_active_ms';
+
   User? _user;
   bool _isLoading = true;
   String? _error;
@@ -19,6 +22,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isBiometricAvailable = false;
   bool _isBiometricEnabled = false;
   String? _profileImagePath;
+  int? _autoLogoutMinutes;
 
   User? get user => _user;
   bool get isLoading => _isLoading;
@@ -27,6 +31,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isBiometricAvailable => _isBiometricAvailable;
   bool get isBiometricEnabled => _isBiometricEnabled;
   String? get profileImagePath => _profileImagePath;
+  int? get autoLogoutMinutes => _autoLogoutMinutes;
 
   String get deviceIdentifier =>
       _deviceIdentifier ?? 'flutter_${Platform.operatingSystem}_unknown';
@@ -65,6 +70,7 @@ class AuthProvider extends ChangeNotifier {
       await _checkBiometricAvailability();
       _user = await _authService.loadStoredUser();
       _profileImagePath = await _storage.read(key: 'profile_image_path');
+      await _loadAutoLogoutSetting();
     } catch (e) {
       _user = null;
     }
@@ -91,6 +97,7 @@ class AuthProvider extends ChangeNotifier {
 
       _user = result['user'] as User;
       _profileImagePath = await _storage.read(key: 'profile_image_path');
+      await recordActivity();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -130,7 +137,8 @@ class AuthProvider extends ChangeNotifier {
       final savedPassword = await _storage.read(key: 'biometric_password');
 
       if (savedLogin == null || savedPassword == null) {
-        _error = 'No saved credentials found. Please log in with your password first.';
+        _error =
+            'No saved credentials found. Please log in with your password first.';
         notifyListeners();
         return false;
       }
@@ -171,7 +179,10 @@ class AuthProvider extends ChangeNotifier {
       // Authenticate biometrically to confirm
       final authenticated = await _localAuth.authenticate(
         localizedReason: 'Confirm your identity to enable biometric login',
-        options: const AuthenticationOptions(biometricOnly: false, stickyAuth: true),
+        options: const AuthenticationOptions(
+          biometricOnly: false,
+          stickyAuth: true,
+        ),
       );
 
       if (!authenticated) {
@@ -215,7 +226,68 @@ class AuthProvider extends ChangeNotifier {
     await _authService.logout();
     _user = null;
     _profileImagePath = null;
+    await _storage.delete(key: _lastActiveKey);
     notifyListeners();
+  }
+
+  Future<void> recordActivity() async {
+    if (!isAuthenticated) return;
+    await _storage.write(
+      key: _lastActiveKey,
+      value: DateTime.now().millisecondsSinceEpoch.toString(),
+    );
+  }
+
+  Future<void> handleLifecycleResume() async {
+    if (!isAuthenticated) return;
+
+    final minutes = _autoLogoutMinutes;
+    if (minutes == null) {
+      await recordActivity();
+      return;
+    }
+
+    final raw = await _storage.read(key: _lastActiveKey);
+    final lastMs = int.tryParse(raw ?? '');
+    if (lastMs == null) {
+      await recordActivity();
+      return;
+    }
+
+    final delta = DateTime.now().millisecondsSinceEpoch - lastMs;
+    final maxMs = minutes * 60 * 1000;
+    if (delta >= maxMs) {
+      await logout();
+      return;
+    }
+
+    await recordActivity();
+  }
+
+  Future<void> handleLifecyclePause() async {
+    await recordActivity();
+  }
+
+  Future<void> setAutoLogoutMinutes(int? minutes) async {
+    _autoLogoutMinutes = minutes;
+    await _storage.write(key: _autoLogoutKey, value: minutes?.toString() ?? '');
+    notifyListeners();
+  }
+
+  Future<void> _loadAutoLogoutSetting() async {
+    final raw = await _storage.read(key: _autoLogoutKey);
+    if (raw == null) {
+      _autoLogoutMinutes = 30;
+      await _storage.write(key: _autoLogoutKey, value: '30');
+      return;
+    }
+
+    if (raw.trim().isEmpty) {
+      _autoLogoutMinutes = null;
+      return;
+    }
+
+    _autoLogoutMinutes = int.tryParse(raw) ?? 30;
   }
 
   void clearError() {

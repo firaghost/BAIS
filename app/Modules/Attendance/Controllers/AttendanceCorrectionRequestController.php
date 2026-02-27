@@ -58,7 +58,13 @@ class AttendanceCorrectionRequestController extends Controller
             throw new AuthenticationException('Unauthenticated.');
         }
 
-        $updated = $this->service->approve($attendanceCorrectionRequest, $actor, $request->comment(), $request->ip());
+        $updated = $this->service->approve(
+            $attendanceCorrectionRequest,
+            $actor,
+            $request->comment(),
+            $request->excuseLate(),
+            $request->ip(),
+        );
 
         return response()->json(['data' => $updated]);
     }

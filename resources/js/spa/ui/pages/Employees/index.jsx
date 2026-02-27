@@ -1,1 +1,1 @@
-export { EmployeesPage } from '../EmployeesPage.jsx';
+export { EmployeesPage } from './EmployeesPage.jsx';

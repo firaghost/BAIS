@@ -1,5 +1,6 @@
 import '../models/attendance_log.dart';
 import '../models/head_office_geofence.dart';
+import '../models/weekly_summary.dart';
 import 'api_service.dart';
 
 class AttendanceService {
@@ -8,6 +9,11 @@ class AttendanceService {
   Future<HeadOfficeGeoFence> getHeadOfficeGeoFence() async {
     final result = await _api.get('/attendance/head-office-geo');
     return HeadOfficeGeoFence.fromJson(result['data'] as Map<String, dynamic>);
+  }
+
+  Future<WeeklySummary> getWeeklySummary() async {
+    final result = await _api.get('/attendance/weekly-summary');
+    return WeeklySummary.fromJson(result['data'] as Map<String, dynamic>);
   }
 
   Future<AttendanceLog> checkIn({
@@ -20,6 +26,13 @@ class AttendanceService {
     );
 
     return AttendanceLog.fromJson(result['data'] as Map<String, dynamic>);
+  }
+
+  Future<AttendanceLog?> fetchTodayLog() async {
+    final result = await _api.get('/attendance/today');
+    final data = result['data'];
+    if (data == null) return null;
+    return AttendanceLog.fromJson(data as Map<String, dynamic>);
   }
 
   Future<AttendanceLog> checkOut() async {
@@ -58,5 +71,24 @@ class AttendanceService {
     return items
         .map((e) => AttendanceLog.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<void> requestCorrection({
+    required int attendanceLogId,
+    required String reason,
+    DateTime? proposedCheckInTime,
+    DateTime? proposedCheckOutTime,
+  }) async {
+    await _api.post(
+      '/attendance/corrections',
+      body: {
+        'attendance_log_id': attendanceLogId,
+        'reason': reason,
+        if (proposedCheckInTime != null)
+          'proposed_check_in_time': proposedCheckInTime.toIso8601String(),
+        if (proposedCheckOutTime != null)
+          'proposed_check_out_time': proposedCheckOutTime.toIso8601String(),
+      },
+    );
   }
 }

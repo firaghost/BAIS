@@ -17,6 +17,7 @@ class AttendanceCorrectionReviewRequest extends FormRequest
     {
         return [
             'comment' => ['nullable', 'string', 'max:1000'],
+            'excuse_late' => ['nullable', 'boolean'],
         ];
     }
 
@@ -25,5 +26,10 @@ class AttendanceCorrectionReviewRequest extends FormRequest
         $value = $this->validated('comment');
 
         return is_string($value) ? $value : null;
+    }
+
+    public function excuseLate(): bool
+    {
+        return (bool) ($this->validated('excuse_late') ?? false);
     }
 }

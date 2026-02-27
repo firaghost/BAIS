@@ -21,6 +21,7 @@ const hrAdminNav = [
     { to: '/attendance', label: 'Attendance', icon: 'schedule' },
     { to: '/employees', label: 'Employees', icon: 'users' },
     { to: '/leaves', label: 'Leave Requests', icon: 'event', badgeKey: 'pending_leave_requests' },
+    { to: '/corrections', label: 'Corrections', icon: 'edit_note' },
     { to: '/reports', label: 'Reports', icon: 'analytics' },
     { to: '/settings', label: 'Policy Config', icon: 'settings' },
 ];

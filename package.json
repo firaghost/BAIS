@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "vite build --config vite.spa.config.js",
         "dev": "vite",
         "dev:spa": "vite --config vite.spa.config.js",
         "dev:full": "concurrently \"php artisan serve\" \"vite\""

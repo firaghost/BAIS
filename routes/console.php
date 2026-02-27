@@ -42,3 +42,12 @@ Artisan::command('leaves:reset-credits {--year=}', function () {
 })->purpose('Reset yearly leave credits for all employees');
 
 Schedule::command('leaves:reset-credits')->yearlyOn(1, 1, '00:10');
+
+Artisan::command('attendance:checkin-reminders', function () {
+    $this->info('Check-in reminder job executed.');
+})->purpose('Trigger check-in reminder dispatch (Mon–Sat)');
+
+Schedule::command('attendance:checkin-reminders')->days([1, 2, 3, 4, 5, 6])->at('07:30');
+Schedule::command('attendance:checkin-reminders')->days([1, 2, 3, 4, 5, 6])->at('07:40');
+Schedule::command('attendance:checkin-reminders')->days([1, 2, 3, 4, 5, 6])->at('07:50');
+Schedule::command('attendance:checkin-reminders')->days([1, 2, 3, 4, 5, 6])->at('07:55');

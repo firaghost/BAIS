@@ -77,9 +77,10 @@ class AttendanceCorrectionRequestService
         AttendanceCorrectionRequest $request,
         User $reviewer,
         ?string $comment,
+        bool $excuseLate,
         ?string $ipAddress,
     ): AttendanceCorrectionRequest {
-        return $this->db->transaction(function () use ($request, $reviewer, $comment, $ipAddress): AttendanceCorrectionRequest {
+        return $this->db->transaction(function () use ($request, $reviewer, $comment, $excuseLate, $ipAddress): AttendanceCorrectionRequest {
             $request->refresh();
 
             if ($request->status !== 'pending') {
@@ -101,9 +102,20 @@ class AttendanceCorrectionRequestService
                 throw new HttpException(422, 'Invalid check-out time.');
             }
 
-            $shift = $this->resolveShiftForBranch((int) $log->branch_id);
-            $log->late_minutes = $this->calculateLateMinutesForDate($log->check_in_time, $log->log_date, $shift);
-            $log->overtime_minutes = $this->calculateOvertimeMinutesForDate($log->check_out_time, $log->log_date, $shift);
+            try {
+                $shift = $this->resolveShiftForBranch((int) $log->branch_id);
+                $log->late_minutes = $this->calculateLateMinutesForDate($log->check_in_time, $log->log_date, $shift);
+                $log->overtime_minutes = $this->calculateOvertimeMinutesForDate($log->check_out_time, $log->log_date, $shift);
+            } catch (\Throwable $e) {
+                if ($e instanceof HttpException && $e->getStatusCode() === 422) {
+                    $log->late_minutes = 0;
+                    $log->overtime_minutes = 0;
+                } else {
+                    throw $e;
+                }
+            }
+
+            $log->late_excused = $excuseLate;
             $log->status = $log->check_out_time ? 'checked_out' : 'checked_in';
             $log->save();
 

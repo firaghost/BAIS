@@ -1,1 +1,1 @@
-export { BranchesPage } from '../BranchesPage.jsx';
+export { BranchesPage, SuperAdminBranchesPage } from './BranchesPage.jsx';

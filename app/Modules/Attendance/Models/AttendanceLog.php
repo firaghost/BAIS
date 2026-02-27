@@ -22,6 +22,7 @@ class AttendanceLog extends Model
         'check_in_time',
         'check_out_time',
         'late_minutes',
+        'late_excused',
         'overtime_minutes',
         'status',
     ];
@@ -34,6 +35,7 @@ class AttendanceLog extends Model
         'check_in_time' => 'datetime',
         'check_out_time' => 'datetime',
         'late_minutes' => 'int',
+        'late_excused' => 'bool',
         'overtime_minutes' => 'int',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

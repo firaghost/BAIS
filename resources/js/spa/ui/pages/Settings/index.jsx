@@ -1,1 +1,1 @@
-export { SettingsPage } from '../SettingsPage.jsx';
+export { SettingsPage } from './SettingsPage.jsx';

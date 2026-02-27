@@ -58,6 +58,57 @@ class LeaveRequest {
     return end.difference(start).inDays + 1;
   }
 
+  DateTime? get startDateTime {
+    return DateTime.tryParse(startDate);
+  }
+
+  DateTime? get endDateTime {
+    return DateTime.tryParse(endDate);
+  }
+
+  String get startDateLabel {
+    final d = startDateTime;
+    if (d == null) return startDate;
+    return '${_monthLabel(d.month)} ${d.day.toString().padLeft(2, '0')}, ${d.year}';
+  }
+
+  String get endDateLabel {
+    final d = endDateTime;
+    if (d == null) return endDate;
+    return '${_monthLabel(d.month)} ${d.day.toString().padLeft(2, '0')}, ${d.year}';
+  }
+
+  static String _monthLabel(int month) {
+    switch (month) {
+      case 1:
+        return 'Jan';
+      case 2:
+        return 'Feb';
+      case 3:
+        return 'Mar';
+      case 4:
+        return 'Apr';
+      case 5:
+        return 'May';
+      case 6:
+        return 'Jun';
+      case 7:
+        return 'Jul';
+      case 8:
+        return 'Aug';
+      case 9:
+        return 'Sep';
+      case 10:
+        return 'Oct';
+      case 11:
+        return 'Nov';
+      case 12:
+        return 'Dec';
+      default:
+        return '';
+    }
+  }
+
   factory LeaveRequest.fromJson(Map<String, dynamic> json) {
     return LeaveRequest(
       id: json['id'] as int,
@@ -75,21 +126,56 @@ class LeaveRequest {
 }
 
 class LeaveBalance {
-  final int annual;
-  final int sick;
-  final int personal;
+  final int annualRemaining;
+  final int annualTotal;
+  final int annualUsed;
+  final int sickRemaining;
+  final int sickTotal;
+  final int sickUsed;
+  final int personalRemaining;
+  final int personalTotal;
+  final int personalUsed;
 
   LeaveBalance({
-    required this.annual,
-    required this.sick,
-    required this.personal,
+    required this.annualRemaining,
+    required this.annualTotal,
+    required this.annualUsed,
+    required this.sickRemaining,
+    required this.sickTotal,
+    required this.sickUsed,
+    required this.personalRemaining,
+    required this.personalTotal,
+    required this.personalUsed,
   });
 
+  int get annual => annualRemaining;
+  int get sick => sickRemaining;
+  int get personal => personalRemaining;
+
   factory LeaveBalance.fromJson(Map<String, dynamic> json) {
+    final annualDetail = json['annual_detail'] as Map<String, dynamic>?;
+    final sickDetail = json['sick_detail'] as Map<String, dynamic>?;
+    final personalDetail = json['personal_detail'] as Map<String, dynamic>?;
+
     return LeaveBalance(
-      annual: (json['annual'] as num?)?.toInt() ?? 0,
-      sick: (json['sick'] as num?)?.toInt() ?? 0,
-      personal: (json['personal'] as num?)?.toInt() ?? 0,
+      annualRemaining:
+          (annualDetail?['remaining'] as num?)?.toInt() ??
+          (json['annual'] as num?)?.toInt() ??
+          0,
+      annualTotal: (annualDetail?['total'] as num?)?.toInt() ?? 0,
+      annualUsed: (annualDetail?['used'] as num?)?.toInt() ?? 0,
+      sickRemaining:
+          (sickDetail?['remaining'] as num?)?.toInt() ??
+          (json['sick'] as num?)?.toInt() ??
+          0,
+      sickTotal: (sickDetail?['total'] as num?)?.toInt() ?? 0,
+      sickUsed: (sickDetail?['used'] as num?)?.toInt() ?? 0,
+      personalRemaining:
+          (personalDetail?['remaining'] as num?)?.toInt() ??
+          (json['personal'] as num?)?.toInt() ??
+          0,
+      personalTotal: (personalDetail?['total'] as num?)?.toInt() ?? 0,
+      personalUsed: (personalDetail?['used'] as num?)?.toInt() ?? 0,
     );
   }
 }

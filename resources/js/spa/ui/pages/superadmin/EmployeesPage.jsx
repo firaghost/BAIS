@@ -59,6 +59,132 @@ export function EmployeesPage() {
 
     const [selectedIds, setSelectedIds] = useState(() => new Set());
 
+    const [leaveCredits, setLeaveCredits] = useState({
+        open: false,
+        scope: 'selected',
+        employeeId: null,
+        year: new Date().getFullYear(),
+        rows: [{ leaveType: 'annual', totalDays: '' }],
+        current: { status: 'idle', data: [], error: null },
+        status: 'idle',
+        error: null,
+    });
+
+    const openLeaveCredits = ({ scope, employeeId }) => {
+        setLeaveCredits((prev) => ({
+            ...prev,
+            open: true,
+            scope,
+            employeeId: employeeId ?? null,
+            rows: [{ leaveType: 'annual', totalDays: '' }],
+            current: { status: 'idle', data: [], error: null },
+            status: 'idle',
+            error: null,
+        }));
+    };
+
+    const closeLeaveCredits = () => {
+        setLeaveCredits((prev) => ({
+            ...prev,
+            open: false,
+            status: 'idle',
+            error: null,
+        }));
+    };
+
+    const submitLeaveCredits = async () => {
+        if (leaveCredits.status === 'submitting') {
+            return;
+        }
+
+        const year = Number(leaveCredits.year);
+        if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+            setLeaveCredits((prev) => ({ ...prev, error: 'Please enter a valid year.' }));
+            return;
+        }
+
+        const rows = Array.isArray(leaveCredits.rows) ? leaveCredits.rows : [];
+        if (rows.length === 0) {
+            setLeaveCredits((prev) => ({ ...prev, error: 'Add at least one leave type.' }));
+            return;
+        }
+
+        for (const row of rows) {
+            const totalDays = Number(row.totalDays);
+            if (!Number.isFinite(totalDays) || totalDays < 0 || totalDays > 365) {
+                setLeaveCredits((prev) => ({ ...prev, error: 'Please enter valid leave days (0 - 365).' }));
+                return;
+            }
+        }
+
+        let employeeIds = [];
+        if (leaveCredits.scope === 'single') {
+            if (!leaveCredits.employeeId) {
+                setLeaveCredits((prev) => ({ ...prev, error: 'Employee is required.' }));
+                return;
+            }
+            employeeIds = [Number(leaveCredits.employeeId)];
+        } else {
+            employeeIds = Array.from(selectedIds).map((id) => Number(id));
+        }
+
+        employeeIds = employeeIds.filter((id) => Number.isFinite(id) && id > 0);
+        if (employeeIds.length === 0) {
+            setLeaveCredits((prev) => ({ ...prev, error: 'Select at least one employee.' }));
+            return;
+        }
+
+        setLeaveCredits((prev) => ({ ...prev, status: 'submitting', error: null }));
+
+        for (const row of rows) {
+            const totalDays = Number(row.totalDays);
+
+            const res = await safePost('/api/leaves/credits/bulk-set', {
+                year,
+                leave_type: row.leaveType,
+                total_days: totalDays,
+                apply_to_all: false,
+                employee_ids: employeeIds,
+            });
+
+            if (!res.ok) {
+                const msg = res.error?.message || res.error || 'Failed to update leave credits.';
+                setLeaveCredits((prev) => ({ ...prev, status: 'error', error: msg }));
+                return;
+            }
+        }
+
+        setLeaveCredits((prev) => ({ ...prev, status: 'idle', open: false, error: null }));
+    };
+
+    useEffect(() => {
+        if (!leaveCredits.open || leaveCredits.scope !== 'single' || !leaveCredits.employeeId) {
+            return;
+        }
+
+        let active = true;
+        setLeaveCredits((prev) => ({ ...prev, current: { status: 'loading', data: [], error: null } }));
+
+        (async () => {
+            const year = Number(leaveCredits.year);
+            const res = await safeGet(`/api/leaves/credits/employee/${leaveCredits.employeeId}?year=${encodeURIComponent(String(year))}`);
+            if (!active) return;
+
+            if (!res.ok) {
+                const msg = res.error?.message || res.error || 'Failed to load leave credits.';
+                setLeaveCredits((prev) => ({ ...prev, current: { status: 'error', data: [], error: msg } }));
+                return;
+            }
+
+            const rows = Array.isArray(res.data?.data) ? res.data.data : [];
+            setLeaveCredits((prev) => ({ ...prev, current: { status: 'success', data: rows, error: null } }));
+        })();
+
+        return () => {
+            active = false;
+        };
+    }, [leaveCredits.open, leaveCredits.scope, leaveCredits.employeeId, leaveCredits.year]);
+
     const [reloadKey, setReloadKey] = useState(0);
 
     const [bulkOpen, setBulkOpen] = useState(false);
@@ -530,12 +656,180 @@ export function EmployeesPage() {
 
     return (
         <div className="space-y-6 h-full flex flex-col">
+            {leaveCredits.open ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white shadow-xl">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                            <div>
+                                <div className="text-sm font-semibold text-slate-900">Set Leave Days</div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                    {leaveCredits.scope === 'single'
+                                        ? 'Apply to this employee.'
+                                        : `Apply to ${selectedIds.size} selected employee${selectedIds.size === 1 ? '' : 's'}.`}
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="rounded p-2 text-slate-500 hover:bg-slate-100"
+                                onClick={closeLeaveCredits}
+                                aria-label="Close"
+                            >
+                                <Icon name="close" className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 px-5 py-4 md:grid-cols-3">
+                            <div>
+                                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Year</label>
+                                <input
+                                    type="number"
+                                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-[#0a1f43] focus:border-transparent"
+                                    value={leaveCredits.year}
+                                    onChange={(e) => setLeaveCredits((prev) => ({ ...prev, year: e.target.value }))}
+                                />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Leave Types &amp; Days</label>
+                                    <button
+                                        type="button"
+                                        className="text-xs font-semibold text-[#0a1f43] hover:underline"
+                                        onClick={() =>
+                                            setLeaveCredits((prev) => ({
+                                                ...prev,
+                                                rows: [...(Array.isArray(prev.rows) ? prev.rows : []), { leaveType: 'annual', totalDays: '' }],
+                                            }))
+                                        }
+                                        disabled={leaveCredits.status === 'submitting'}
+                                    >
+                                        Add Type
+                                    </button>
+                                </div>
+
+                                <div className="mt-2 space-y-2">
+                                    {(Array.isArray(leaveCredits.rows) ? leaveCredits.rows : []).map((row, idx) => (
+                                        <div key={idx} className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                                            <select
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-[#0a1f43] focus:border-transparent"
+                                                value={row.leaveType}
+                                                onChange={(e) =>
+                                                    setLeaveCredits((prev) => ({
+                                                        ...prev,
+                                                        rows: (Array.isArray(prev.rows) ? prev.rows : []).map((r, i) =>
+                                                            i === idx ? { ...r, leaveType: e.target.value } : r,
+                                                        ),
+                                                    }))
+                                                }
+                                            >
+                                                <option value="annual">Annual</option>
+                                                <option value="sick">Sick</option>
+                                                <option value="personal">Personal</option>
+                                                <option value="other">Other</option>
+                                            </select>
+
+                                            <input
+                                                type="number"
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:ring-2 focus:ring-[#0a1f43] focus:border-transparent"
+                                                value={row.totalDays}
+                                                onChange={(e) =>
+                                                    setLeaveCredits((prev) => ({
+                                                        ...prev,
+                                                        rows: (Array.isArray(prev.rows) ? prev.rows : []).map((r, i) =>
+                                                            i === idx ? { ...r, totalDays: e.target.value } : r,
+                                                        ),
+                                                    }))
+                                                }
+                                                placeholder="Total days"
+                                            />
+
+                                            <button
+                                                type="button"
+                                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                                                onClick={() =>
+                                                    setLeaveCredits((prev) => ({
+                                                        ...prev,
+                                                        rows: (Array.isArray(prev.rows) ? prev.rows : []).filter((_, i) => i !== idx),
+                                                    }))
+                                                }
+                                                disabled={leaveCredits.status === 'submitting' || (leaveCredits.rows?.length ?? 0) <= 1}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {leaveCredits.scope === 'single' ? (
+                            <div className="px-5 pb-2">
+                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Current Credits (Year {leaveCredits.year})</div>
+                                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                                    {leaveCredits.current.status === 'loading' ? (
+                                        <div>Loading leave credits...</div>
+                                    ) : leaveCredits.current.status === 'error' ? (
+                                        <div className="text-red-700">{String(leaveCredits.current.error || 'Failed to load leave credits.')}</div>
+                                    ) : (Array.isArray(leaveCredits.current.data) ? leaveCredits.current.data : []).length === 0 ? (
+                                        <div>No leave credits configured for this year.</div>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {(Array.isArray(leaveCredits.current.data) ? leaveCredits.current.data : []).map((c) => (
+                                                <div key={`${c.leave_type}-${c.year}`} className="flex items-center justify-between">
+                                                    <div className="font-medium text-slate-800">{String(c.leave_type)}</div>
+                                                    <div className="text-slate-600">
+                                                        {Number(c.used_days ?? 0)} / {Number(c.total_days ?? 0)} used
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {leaveCredits.error ? (
+                            <div className="px-5 pb-2 text-sm font-medium text-red-700">{String(leaveCredits.error)}</div>
+                        ) : null}
+
+                        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                            <button
+                                type="button"
+                                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                onClick={closeLeaveCredits}
+                                disabled={leaveCredits.status === 'submitting'}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded-lg bg-[#0a1f43] px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-[#0a1f43]/90 disabled:opacity-60"
+                                onClick={submitLeaveCredits}
+                                disabled={leaveCredits.status === 'submitting'}
+                            >
+                                {leaveCredits.status === 'submitting' ? 'Applying...' : 'Apply'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">Employee Directory</h2>
                     <p className="text-slate-500 text-sm mt-1">Manage personnel records (Head Office).</p>
                 </div>
                 <div className="flex gap-3 w-full sm:w-auto">
+                    <button
+                        type="button"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded text-slate-600 hover:bg-slate-50 transition-colors shadow-sm text-sm font-medium disabled:opacity-60"
+                        onClick={() => openLeaveCredits({ scope: 'selected' })}
+                        disabled={selectedIds.size === 0}
+                        title={selectedIds.size === 0 ? 'Select employees first' : 'Set leave days for selected employees'}
+                    >
+                        <Icon name="event" className="h-4 w-4" />
+                        Set Leave Days
+                    </button>
                     <button
                         type="button"
                         className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded text-slate-600 hover:bg-slate-50 transition-colors shadow-sm text-sm font-medium"
@@ -732,6 +1026,14 @@ export function EmployeesPage() {
                                             </td>
                                             <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        type="button"
+                                                        className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-[#0a1f43] rounded transition-colors"
+                                                        title="Set Leave Days"
+                                                        onClick={() => openLeaveCredits({ scope: 'single', employeeId: emp.id })}
+                                                    >
+                                                        <Icon name="event" className="h-5 w-5" />
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-[#0a1f43] rounded transition-colors"

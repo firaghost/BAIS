@@ -16,7 +16,7 @@ import { EmployeesPage } from './pages/Employees/index.jsx';
 import { ReportsPage } from './pages/Reports/index.jsx';
 import { SettingsPage } from './pages/Settings/index.jsx';
 import { SystemUsersPage } from './pages/SystemUsers/index.jsx';
-import { SystemUsersDirectoryPage } from './pages/SystemUsersDirectoryPage.jsx';
+import { SystemUsersDirectoryPage } from './pages/SystemUsers/index.jsx';
 import { SuperAdminDashboard } from './pages/superadmin/DashboardPage.jsx';
 import { HrAdminDashboard } from './pages/hradmin/DashboardPage.jsx';
 import { HrAdminAttendance } from './pages/hradmin/AttendancePage.jsx';

@@ -1,0 +1,17 @@
+# Vercel Deployment Scripts
+# This file is for documentation purposes; Vercel typically pulls directly from Git.
+
+# 1. Install Dependencies
+npm install
+
+# 2. Build the Application
+npm run build
+# Ensure that inside package.json, `build` points to `vite build`
+# Also ensure vite.spa.config.js is updated as per our repo changes.
+
+# 3. Output Directory
+# Vercel needs to point to the `dist` folder.
+
+# 4. Environment Variables
+# In Vercel Project Settings > Environment Variables, add:
+# VITE_API_URL=http://apiat.mirachpos.com

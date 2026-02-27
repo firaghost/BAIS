@@ -8,9 +8,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('attendance')->group(function (): void {
     Route::get('/head-office-geo', [AttendanceController::class, 'headOfficeGeo'])->middleware('permission:attendance.checkin');
+    Route::get('/today', [AttendanceController::class, 'today'])->middleware('permission:attendance.checkin');
     Route::post('/check-in', [AttendanceController::class, 'checkIn'])->middleware('permission:attendance.checkin');
     Route::post('/check-out', [AttendanceController::class, 'checkOut'])->middleware('permission:attendance.checkout');
     Route::get('/history', [AttendanceController::class, 'history'])->middleware('permission:attendance.history');
+    Route::get('/weekly-summary', [AttendanceController::class, 'weeklySummary'])->middleware('permission:attendance.history');
 
     Route::get('/manage', [AttendanceController::class, 'manageIndex'])->middleware('permission:attendance.manage.view');
     Route::patch('/logs/{attendanceLog}', [AttendanceController::class, 'manageUpdate'])->middleware('permission:attendance.manage.update');

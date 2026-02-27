@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/leave_request.dart';
 import '../services/leave_service.dart';
+import '../services/notification_service.dart';
 
 class LeaveProvider extends ChangeNotifier {
   final LeaveService _leaveService = LeaveService();
@@ -8,21 +9,30 @@ class LeaveProvider extends ChangeNotifier {
   LeaveBalance? _balance;
   List<LeaveRequest> _requests = [];
   bool _isLoading = false;
+  bool _isBalanceLoading = false;
   bool _isSubmitting = false;
   String? _error;
 
   LeaveBalance? get balance => _balance;
   List<LeaveRequest> get requests => _requests;
   bool get isLoading => _isLoading;
+  bool get isBalanceLoading => _isBalanceLoading;
   bool get isSubmitting => _isSubmitting;
   String? get error => _error;
 
   Future<void> loadBalance({int? year}) async {
+    _isBalanceLoading = true;
+    _error = null;
+    notifyListeners();
+
     try {
       _balance = await _leaveService.getBalance(year: year);
+      _isBalanceLoading = false;
       notifyListeners();
     } catch (e) {
-      // Balance might not be available
+      _error = e.toString().replaceAll(RegExp(r'^Exception:\s*'), '').trim();
+      _isBalanceLoading = false;
+      notifyListeners();
     }
   }
 
@@ -34,6 +44,8 @@ class LeaveProvider extends ChangeNotifier {
       _requests = await _leaveService.getRequests();
       _isLoading = false;
       notifyListeners();
+
+      await NotificationService().notifyLeaveStatusChanges(_requests);
     } catch (e) {
       _error = e.toString();
       _isLoading = false;

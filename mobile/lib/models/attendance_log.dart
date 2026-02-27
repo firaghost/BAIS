@@ -7,6 +7,7 @@ class AttendanceLog {
   final String? checkInTime;
   final String? checkOutTime;
   final int lateMinutes;
+  final bool lateExcused;
   final int overtimeMinutes;
   final String status;
   final Map<String, dynamic>? branch;
@@ -20,6 +21,7 @@ class AttendanceLog {
     this.checkInTime,
     this.checkOutTime,
     this.lateMinutes = 0,
+    this.lateExcused = false,
     this.overtimeMinutes = 0,
     required this.status,
     this.branch,
@@ -30,13 +32,13 @@ class AttendanceLog {
   String get statusLabel {
     if (status == 'checked_in') return 'Checked In';
     if (status == 'checked_out') {
-      if (lateMinutes > 0) return 'Late';
+      if (isLate) return 'Late';
       return 'Present';
     }
     return status;
   }
 
-  bool get isLate => lateMinutes > 0;
+  bool get isLate => lateMinutes > 0 && lateExcused == false;
 
   Duration? get totalWorked {
     if (checkInTime == null || checkOutTime == null) return null;
@@ -64,6 +66,7 @@ class AttendanceLog {
       checkInTime: json['check_in_time'] as String?,
       checkOutTime: json['check_out_time'] as String?,
       lateMinutes: (json['late_minutes'] as num?)?.toInt() ?? 0,
+      lateExcused: (json['late_excused'] as bool?) ?? false,
       overtimeMinutes: (json['overtime_minutes'] as num?)?.toInt() ?? 0,
       status: json['status'] as String? ?? 'unknown',
       branch: json['branch'] as Map<String, dynamic>?,

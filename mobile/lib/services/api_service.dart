@@ -26,7 +26,8 @@ class ApiService {
     await _storage.delete(key: 'auth_token');
   }
 
-  Map<String, String> get _headers {
+  Future<Map<String, String>> _headers() async {
+    await getToken();
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -37,42 +38,60 @@ class ApiService {
     return headers;
   }
 
-  Future<Map<String, dynamic>> get(String endpoint, {Map<String, String>? queryParams}) async {
-    final uri = Uri.parse('${ApiConfig.baseUrl}$endpoint')
-        .replace(queryParameters: queryParams);
+  Future<Map<String, dynamic>> get(
+    String endpoint, {
+    Map<String, String>? queryParams,
+  }) async {
+    final uri = Uri.parse(
+      '${ApiConfig.baseUrl}$endpoint',
+    ).replace(queryParameters: queryParams);
 
-    final response = await http.get(uri, headers: _headers)
+    final response = await http
+        .get(uri, headers: await _headers())
         .timeout(ApiConfig.timeout);
 
     return _handleResponse(response);
   }
 
-  Future<Map<String, dynamic>> post(String endpoint, {Map<String, dynamic>? body}) async {
+  Future<Map<String, dynamic>> post(
+    String endpoint, {
+    Map<String, dynamic>? body,
+  }) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$endpoint');
 
-    final response = await http.post(
-      uri,
-      headers: _headers,
-      body: body != null ? jsonEncode(body) : null,
-    ).timeout(ApiConfig.timeout);
+    final response = await http
+        .post(
+          uri,
+          headers: await _headers(),
+          body: body != null ? jsonEncode(body) : null,
+        )
+        .timeout(ApiConfig.timeout);
 
     return _handleResponse(response);
   }
 
-  Future<Map<String, dynamic>> put(String endpoint, {Map<String, dynamic>? body}) async {
+  Future<Map<String, dynamic>> put(
+    String endpoint, {
+    Map<String, dynamic>? body,
+  }) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$endpoint');
 
-    final response = await http.put(
-      uri,
-      headers: _headers,
-      body: body != null ? jsonEncode(body) : null,
-    ).timeout(ApiConfig.timeout);
+    final response = await http
+        .put(
+          uri,
+          headers: await _headers(),
+          body: body != null ? jsonEncode(body) : null,
+        )
+        .timeout(ApiConfig.timeout);
 
     return _handleResponse(response);
   }
 
   Map<String, dynamic> _handleResponse(http.Response response) {
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final raw = response.body.trim();
+    final Map<String, dynamic> body = raw.isEmpty
+        ? <String, dynamic>{}
+        : (jsonDecode(raw) as Map<String, dynamic>);
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return body;
