@@ -118,7 +118,6 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: AppTheme.background(context),
@@ -127,93 +126,66 @@ class _LoginScreenState extends State<LoginScreen>
           opacity: _fadeIn,
           child: SlideTransition(
             position: _slideIn,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 48),
-                  // Logo & Brand
-                  Center(
-                    child: Column(
-                      children: [
-                        Image.asset(
-                          'assets/logo.png',
-                          width: 84,
-                          height: 84,
-                          fit: BoxFit.contain,
-                        ),
-                        const SizedBox(height: 18),
-                        Text(
-                          'Sign in',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.textPrimary(context),
-                                letterSpacing: -0.5,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // Card form
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: AppTheme.card(context),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: isDark
-                              ? Colors.black.withValues(alpha: 0.3)
-                              : Colors.black.withValues(alpha: 0.06),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Employee ID / Email
-                        _buildLabel('EMPLOYEE ID OR EMAIL', context),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _loginController,
-                          focusNode: _loginFocus,
-                          keyboardType: TextInputType.text,
-                          textInputAction: TextInputAction.next,
-                          onSubmitted: (_) => FocusScope.of(
-                            context,
-                          ).requestFocus(_passwordFocus),
-                          decoration: InputDecoration(
-                            hintText: 'SDB0012025 or name@company.com',
-                            prefixIcon: Icon(
-                              Icons.person_outline,
-                              color: AppTheme.textLight(context),
-                            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxW = constraints.maxWidth.clamp(0, 420).toDouble();
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxW),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        children: [
+                          const Spacer(flex: 2),
+                          Image.asset(
+                            'assets/logo.png',
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.contain,
                           ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Password
-                        _buildLabel('PASSWORD', context),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _passwordController,
-                          focusNode: _passwordFocus,
-                          obscureText: _obscurePassword,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _handleLogin(),
-                          decoration: InputDecoration(
-                            hintText: 'Enter your password',
-                            prefixIcon: Icon(
-                              Icons.lock_outline,
-                              color: AppTheme.textLight(context),
-                            ),
-                            suffixIcon: IconButton(
+                          const SizedBox(height: 28),
+                          Text(
+                            'Welcome Back',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppTheme.textPrimary(context),
+                                  letterSpacing: -0.6,
+                                ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Sign in to your employee account',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: AppTheme.textSecondary(context),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                          const SizedBox(height: 44),
+                          _UnderlineFloatingField(
+                            controller: _loginController,
+                            focusNode: _loginFocus,
+                            keyboardType: TextInputType.text,
+                            textInputAction: TextInputAction.next,
+                            icon: Icons.work_outline,
+                            label: 'Employee ID / Email',
+                            onSubmitted: (_) => FocusScope.of(
+                              context,
+                            ).requestFocus(_passwordFocus),
+                          ),
+                          const SizedBox(height: 26),
+                          _UnderlineFloatingField(
+                            controller: _passwordController,
+                            focusNode: _passwordFocus,
+                            keyboardType: TextInputType.visiblePassword,
+                            textInputAction: TextInputAction.done,
+                            icon: Icons.lock_open,
+                            label: 'Password',
+                            obscureText: _obscurePassword,
+                            suffix: IconButton(
                               icon: Icon(
                                 _obscurePassword
                                     ? Icons.visibility_off_outlined
@@ -224,184 +196,76 @@ class _LoginScreenState extends State<LoginScreen>
                                 () => _obscurePassword = !_obscurePassword,
                               ),
                             ),
+                            onSubmitted: (_) => _handleLogin(),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Remember me + Forgot
-                        Row(
-                          children: [
-                            GestureDetector(
-                              onTap: () => setState(
-                                () => _rememberLogin = !_rememberLogin,
+                          const SizedBox(height: 30),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: ElevatedButton(
+                              onPressed: auth.isLoading ? null : _handleLogin,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryBlue,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
                               ),
-                              child: Row(
-                                children: [
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    width: 20,
-                                    height: 20,
-                                    decoration: BoxDecoration(
-                                      color: _rememberLogin
-                                          ? AppTheme.primaryBlue
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(5),
-                                      border: Border.all(
-                                        color: _rememberLogin
-                                            ? AppTheme.primaryBlue
-                                            : AppTheme.divider(context),
-                                        width: 1.5,
+                              child: auth.isLoading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Continue',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    child: _rememberLogin
-                                        ? const Icon(
-                                            Icons.check,
-                                            color: Colors.white,
-                                            size: 13,
-                                          )
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Remember me',
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(
-                                          color: AppTheme.textSecondary(
-                                            context,
-                                          ),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                  ),
-                                ],
-                              ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Login Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 54,
-                          child: ElevatedButton(
-                            onPressed: auth.isLoading ? null : _handleLogin,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryBlue,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              elevation: 0,
-                              shadowColor: AppTheme.primaryBlue.withValues(
-                                alpha: 0.3,
-                              ),
-                            ),
-                            child: auth.isLoading
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2.5,
-                                    ),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(Icons.lock_rounded, size: 18),
-                                      const SizedBox(width: 8),
-                                      const Text(
-                                        'Secure Login',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.3,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Biometric section
-                  if (auth.isBiometricAvailable && auth.isBiometricEnabled) ...[
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Divider(color: AppTheme.divider(context)),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'OR',
+                          const Spacer(flex: 3),
+                          if (auth.isBiometricAvailable &&
+                              auth.isBiometricEnabled)
+                            IconButton(
+                              onPressed: _handleBiometricLogin,
+                              iconSize: 32,
+                              icon: Icon(
+                                Icons.fingerprint,
+                                color: AppTheme.textSecondary(context),
+                              ),
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppTheme.card(context),
+                                padding: const EdgeInsets.all(14),
+                                shape: const CircleBorder(),
+                                side: BorderSide(
+                                  color: AppTheme.divider(context),
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Help & Security',
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
                                   color: AppTheme.textLight(context),
-                                  letterSpacing: 2,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.2,
                                 ),
                           ),
-                        ),
-                        Expanded(
-                          child: Divider(color: AppTheme.divider(context)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    Center(
-                      child: GestureDetector(
-                        onTap: _handleBiometricLogin,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.card(context),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: AppTheme.divider(context),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: isDark
-                                    ? Colors.black.withValues(alpha: 0.2)
-                                    : Colors.black.withValues(alpha: 0.04),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.fingerprint_rounded,
-                                size: 44,
-                                color: AppTheme.primaryBlue,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Tap to use Biometrics',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: AppTheme.textSecondary(context),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
+                          const SizedBox(height: 20),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-                  ],
-                  const SizedBox(height: 32),
-                ],
-              ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -417,14 +281,55 @@ class _LoginScreenState extends State<LoginScreen>
 
     return trimmed.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
   }
+}
 
-  Widget _buildLabel(String text, BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: AppTheme.textSecondary(context),
-        letterSpacing: 1.5,
+class _UnderlineFloatingField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final TextInputType keyboardType;
+  final TextInputAction textInputAction;
+  final IconData icon;
+  final String label;
+  final bool obscureText;
+  final Widget? suffix;
+  final void Function(String)? onSubmitted;
+
+  const _UnderlineFloatingField({
+    required this.controller,
+    required this.focusNode,
+    required this.keyboardType,
+    required this.textInputAction,
+    required this.icon,
+    required this.label,
+    this.obscureText = false,
+    this.suffix,
+    this.onSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = AppTheme.textLight(context);
+    final activeColor = AppTheme.primaryBlue;
+
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      obscureText: obscureText,
+      onSubmitted: onSubmitted,
+      decoration: InputDecoration(
+        labelText: label,
+        floatingLabelBehavior: FloatingLabelBehavior.auto,
+        prefixIcon: Icon(icon, color: baseColor),
+        suffixIcon: suffix,
+        border: const UnderlineInputBorder(),
+        enabledBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: AppTheme.divider(context)),
+        ),
+        focusedBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: activeColor, width: 1.6),
+        ),
       ),
     );
   }

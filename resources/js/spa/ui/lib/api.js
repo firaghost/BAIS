@@ -1,5 +1,19 @@
 import axios from 'axios';
 
+function resolveBaseUrl() {
+    const baseUrl = String(import.meta.env.VITE_API_URL || '').trim();
+
+    if (!baseUrl) {
+        return '';
+    }
+
+    if (typeof window !== 'undefined' && window.location?.protocol === 'https:' && baseUrl.startsWith('http://')) {
+        return `https://${baseUrl.slice('http://'.length)}`;
+    }
+
+    return baseUrl;
+}
+
 function getToken() {
     try {
         return localStorage.getItem('bais_token');
@@ -9,7 +23,7 @@ function getToken() {
 }
 
 export const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || '',
+    baseURL: resolveBaseUrl(),
     headers: {
         Accept: 'application/json',
     },
