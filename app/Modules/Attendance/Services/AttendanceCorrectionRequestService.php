@@ -47,6 +47,16 @@ class AttendanceCorrectionRequestService
                 throw new HttpException(403, 'Forbidden.');
             }
 
+            $alreadyPending = AttendanceCorrectionRequest::query()
+                ->where('attendance_log_id', $log->id)
+                ->where('user_id', $actor->id)
+                ->where('status', 'pending')
+                ->exists();
+
+            if ($alreadyPending) {
+                throw new HttpException(409, 'A correction request is already pending for this record.');
+            }
+
             $employeeId = Employee::query()->where('user_id', $actor->id)->value('id');
 
             $request = AttendanceCorrectionRequest::query()->create([

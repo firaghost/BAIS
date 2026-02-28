@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import '../models/user.dart';
@@ -19,6 +19,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = true;
   String? _error;
   String? _deviceIdentifier;
+  String? _deviceName;
   bool _isBiometricAvailable = false;
   bool _isBiometricEnabled = false;
   String? _profileImagePath;
@@ -36,14 +37,61 @@ class AuthProvider extends ChangeNotifier {
   String get deviceIdentifier =>
       _deviceIdentifier ?? 'flutter_${Platform.operatingSystem}_unknown';
 
+  String get deviceName => _deviceName ?? 'Flutter ${Platform.operatingSystem}';
+
+  String _generateStableId() {
+    final random = Random.secure();
+    int nextByte() => random.nextInt(256);
+    String hex(int v) => v.toRadixString(16).padLeft(2, '0');
+
+    final bytes = List<int>.generate(16, (_) => nextByte());
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    final b = bytes.map(hex).join();
+    return '${b.substring(0, 8)}-${b.substring(8, 12)}-${b.substring(12, 16)}-${b.substring(16, 20)}-${b.substring(20)}';
+  }
+
   Future<void> _initDeviceIdentifier() async {
     _deviceIdentifier = await _storage.read(key: 'device_identifier');
-    if (_deviceIdentifier == null) {
-      final random = Random.secure();
-      final values = List<int>.generate(32, (i) => random.nextInt(256));
-      _deviceIdentifier =
-          'dev_${base64UrlEncode(values).replaceAll('=', '').substring(0, 30)}';
+
+    if (_deviceIdentifier == null || _deviceIdentifier!.trim().isEmpty) {
+      _deviceIdentifier = '${Platform.operatingSystem}_${_generateStableId()}';
       await _storage.write(key: 'device_identifier', value: _deviceIdentifier!);
+    }
+
+    _deviceName = await _storage.read(key: 'device_name');
+    if (_deviceName == null || _deviceName!.trim().isEmpty) {
+      _deviceName = await _resolveDeviceName();
+      await _storage.write(key: 'device_name', value: _deviceName!);
+    }
+  }
+
+  Future<String> _resolveDeviceName() async {
+    try {
+      final plugin = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final info = await plugin.androidInfo;
+        final brand = info.brand.trim();
+        final model = info.model.trim();
+        final device = info.device.trim();
+        final label = brand.isEmpty ? model : '$brand $model';
+        return label.trim().isEmpty ? device : label;
+      }
+
+      if (Platform.isIOS) {
+        final info = await plugin.iosInfo;
+        final name = info.name.trim();
+        final model = info.model.trim();
+        final system = info.systemName.trim();
+        if (name.isNotEmpty) return name;
+        if (model.isNotEmpty) return model;
+        if (system.isNotEmpty) return system;
+      }
+
+      return 'Flutter ${Platform.operatingSystem}';
+    } catch (_) {
+      return 'Flutter ${Platform.operatingSystem}';
     }
   }
 
@@ -93,6 +141,7 @@ class AuthProvider extends ChangeNotifier {
         login: login,
         password: password,
         deviceIdentifier: deviceIdentifier,
+        deviceName: deviceName,
       );
 
       _user = result['user'] as User;
@@ -174,6 +223,7 @@ class AuthProvider extends ChangeNotifier {
         login: loginId,
         password: password,
         deviceIdentifier: deviceIdentifier,
+        deviceName: deviceName,
       );
 
       // Authenticate biometrically to confirm

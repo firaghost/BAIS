@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
@@ -8,6 +9,8 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/attendance_provider.dart';
 import '../services/attendance_service.dart';
+import '../models/attendance_log.dart';
+import '../models/shift.dart';
 import '../models/head_office_geofence.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_header.dart';
@@ -33,6 +36,75 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final r = _headOffice?.radiusMeters;
     if (r == null || r <= 0) return null;
     return r.toDouble();
+  }
+
+  ({String label, Color color}) _deriveStatusPill(
+    AttendanceProvider attendance,
+    Shift? shift,
+  ) {
+    if (attendance.isCheckedIn) {
+      return (label: 'Working', color: AppTheme.warning);
+    }
+
+    if (shift == null) {
+      return (label: 'No Shift', color: AppTheme.textLight(context));
+    }
+
+    final now = DateTime.now();
+    final partsStart = shift.startTime.split(':');
+    final start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      int.tryParse(partsStart[0]) ?? 0,
+      int.tryParse(partsStart.length > 1 ? partsStart[1] : '0') ?? 0,
+      int.tryParse(partsStart.length > 2 ? partsStart[2] : '0') ?? 0,
+    );
+    final grace = Duration(minutes: shift.graceMinutes);
+    final lateFrom = start.add(grace);
+
+    if (now.isBefore(start)) {
+      return (label: 'Before Shift', color: AppTheme.success);
+    }
+
+    if (now.isBefore(lateFrom)) {
+      return (label: 'On Time', color: AppTheme.success);
+    }
+
+    return (label: 'Late', color: AppTheme.error);
+  }
+
+  bool _isWithinWorkingHours(Shift shift) {
+    final now = DateTime.now();
+
+    final startParts = shift.startTime.split(':');
+    final endParts = shift.endTime.split(':');
+
+    final start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      int.tryParse(startParts[0]) ?? 0,
+      int.tryParse(startParts.length > 1 ? startParts[1] : '0') ?? 0,
+      int.tryParse(startParts.length > 2 ? startParts[2] : '0') ?? 0,
+    );
+    var end = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      int.tryParse(endParts[0]) ?? 0,
+      int.tryParse(endParts.length > 1 ? endParts[1] : '0') ?? 0,
+      int.tryParse(endParts.length > 2 ? endParts[2] : '0') ?? 0,
+    );
+
+    if (end.isBefore(start)) {
+      end = end.add(const Duration(days: 1));
+    }
+
+    final earliest = start.subtract(const Duration(minutes: 30));
+    final latest = end.add(const Duration(minutes: 30));
+
+    return !now.isBefore(earliest) && !now.isAfter(latest);
   }
 
   double? get _accuracyMeters {
@@ -101,8 +173,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<Position?> _getFreshPosition({
-    Duration timeout = const Duration(seconds: 12),
-    double desiredAccuracyMeters = 35,
+    Duration timeout = const Duration(seconds: 8),
+    double desiredAccuracyMeters = 60,
   }) async {
     final hasAccess = await _ensureLocationAccess();
     if (!hasAccess) return null;
@@ -121,7 +193,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       try {
         best = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.bestForNavigation,
+            accuracy: LocationAccuracy.high,
           ),
         );
       } catch (_) {}
@@ -129,7 +201,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       sub =
           Geolocator.getPositionStream(
             locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.bestForNavigation,
+              accuracy: LocationAccuracy.high,
               distanceFilter: 0,
             ),
           ).listen((pos) {
@@ -160,7 +232,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (attendance.todayLog?.checkInTime != null) {
           final checkInTimeString = attendance.todayLog!.checkInTime!;
 
-          final parsed = DateTime.tryParse(checkInTimeString);
+          final parsed = AttendanceLog.parseServerDateTime(checkInTimeString);
           if (parsed != null) {
             final checkInTime = parsed.toLocal();
             setState(() {
@@ -300,14 +372,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _handleCheckIn() async {
     final attendance = context.read<AttendanceProvider>();
 
+    final isDevMode = !kReleaseMode;
+
+    final shift = attendance.currentShift;
+    if (!isDevMode && shift == null) {
+      _showSnack('No shift assigned. Please contact HR.', false);
+      return;
+    }
+
+    if (!isDevMode && shift != null && !_isWithinWorkingHours(shift)) {
+      _showSnack('Check-in is only allowed during working hours.', false);
+      return;
+    }
+
     final fresh = await _getFreshPosition(
-      timeout: const Duration(seconds: 14),
-      desiredAccuracyMeters: 35,
+      timeout: const Duration(seconds: 10),
+      desiredAccuracyMeters: 60,
     );
     if (fresh != null && mounted) {
       setState(() => _currentPosition = fresh);
-      _recomputeDistance();
     }
+    _recomputeDistance();
 
     if (_currentPosition == null) {
       _showSnack(
@@ -326,7 +411,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    if (!_isInRange) {
+    if (!isDevMode && !_isInRange) {
       _showSnack('You are currently outside the Head Office geo-fence.', false);
       return;
     }
@@ -371,8 +456,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Read provider before any async gap
     final attendance = context.read<AttendanceProvider>();
 
-    await _refreshCurrentLocation();
-
     final success = await attendance.checkOut();
     if (mounted) {
       _showSnack(
@@ -412,6 +495,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final attendance = context.watch<AttendanceProvider>();
     final user = auth.user;
     final shift = attendance.currentShift;
+    final pill = _deriveStatusPill(attendance, shift);
     final firstName = user?.employee?.firstName ?? user?.name ?? 'Employee';
     final lastInitial = user?.employee?.lastName.isNotEmpty == true
         ? '.${user!.employee!.lastName[0]}'
@@ -461,10 +545,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            jobTitle,
+                            'Good ${_getGreeting()},',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 14,
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontSize: 16,
                             ),
                           ),
                           Container(
@@ -483,17 +567,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   width: 6,
                                   height: 6,
                                   decoration: BoxDecoration(
-                                    color: attendance.isCheckedIn
-                                        ? AppTheme.warning
-                                        : AppTheme.success,
+                                    color: pill.color,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  attendance.isCheckedIn
-                                      ? 'Working'
-                                      : 'On Time',
+                                  pill.label,
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 12,
@@ -507,13 +587,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Good ${_getGreeting()},',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
                         '$firstName$lastInitial',
                         style: const TextStyle(
                           color: Colors.white,
@@ -524,14 +597,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        shift != null
-                            ? 'Your shift starts at ${shift.formattedStartTime}'
-                            : 'No shift assigned today',
+                        jobTitle,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 14,
                         ),
                       ),
+                      if (shift != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Shift starts at ${shift.formattedStartTime}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -543,6 +624,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     final needsCheckOut =
                         todayLog != null && todayLog.checkOutTime == null;
                     final isWorking = needsCheckOut;
+                    final isCompletedToday =
+                        todayLog != null && todayLog.checkOutTime != null;
+                    final isDevMode = !kReleaseMode;
 
                     if (shift == null) {
                       return Container(
@@ -640,7 +724,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             SizedBox(
                               height: 54,
                               child: ElevatedButton.icon(
-                                onPressed: attendance.isCheckingIn
+                                onPressed:
+                                    (attendance.isCheckingIn ||
+                                        (!isDevMode && isCompletedToday))
                                     ? null
                                     : needsCheckOut
                                     ? _handleCheckOut
@@ -662,7 +748,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       ),
                                 label: Text(
                                   attendance.isCheckingIn
-                                      ? 'Processing...'
+                                      ? (needsCheckOut
+                                            ? 'Checking Out...'
+                                            : 'Checking In...')
+                                      : (!isDevMode && isCompletedToday)
+                                      ? 'Completed for Today'
                                       : needsCheckOut
                                       ? 'Check Out'
                                       : 'Check In Now',
@@ -842,7 +932,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             width: double.infinity,
                             height: 54,
                             child: ElevatedButton.icon(
-                              onPressed: attendance.isCheckingIn
+                              onPressed:
+                                  (attendance.isCheckingIn ||
+                                      (!isDevMode && isCompletedToday))
                                   ? null
                                   : needsCheckOut
                                   ? _handleCheckOut
@@ -1040,27 +1132,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     letterSpacing: 1.2,
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.location_on,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _isInRange
-                                          ? 'Head Office'
-                                          : 'Outside Perimeter',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
                               ],
                             ),
                             Container(
@@ -1069,10 +1140,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.9),
+                                color: Colors.black.withValues(alpha: 0.28),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.2),
+                                  color: Colors.white.withValues(alpha: 0.16),
                                 ),
                               ),
                               child: Row(
@@ -1092,13 +1163,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   Text(
                                     _distanceMeters == null
                                         ? '--'
-                                        : '${_distanceMeters!.toStringAsFixed(0)}m Away',
+                                        : '${_distanceMeters!.toStringAsFixed(0)}m',
                                     style: const TextStyle(
-                                      color: Colors.black87,
+                                      color: Colors.white,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
+                                  if (_accuracyMeters != null) ...[
+                                    Text(
+                                      '  •  ±${_accuracyMeters!.toStringAsFixed(0)}m',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.85,
+                                        ),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -1115,7 +1198,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             horizontal: 14,
                             vertical: 10,
                           ),
-                          color: Colors.black.withValues(alpha: 0.18),
+                          color: Colors.black.withValues(alpha: 0.22),
                           child: Row(
                             children: [
                               Container(
@@ -1130,7 +1213,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
-                                  Icons.verified,
+                                  _isInRange
+                                      ? Icons.gps_fixed
+                                      : Icons.gps_not_fixed,
                                   size: 16,
                                   color: _isInRange
                                       ? AppTheme.success

@@ -5,6 +5,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'dart:convert';
 
+import '../models/attendance_correction_request.dart';
 import '../models/leave_request.dart';
 
 class NotificationService {
@@ -20,6 +21,8 @@ class NotificationService {
 
   static const _inAppStorageKey = 'in_app_notifications_v1';
   static const _inAppMaxItems = 50;
+  static const _notificationsEnabledKey = 'notifications_enabled_v1';
+  static const _correctionStatusKeyPrefix = 'correction_status_';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -30,6 +33,7 @@ class NotificationService {
     if (_initialized) {
       return;
     }
+
     tz.initializeTimeZones();
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -47,9 +51,38 @@ class NotificationService {
     _initialized = true;
   }
 
+  Future<bool> isEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_notificationsEnabledKey) ?? true;
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_notificationsEnabledKey, enabled);
+
+    if (!enabled) {
+      await cancelAllScheduled();
+      return;
+    }
+
+    await scheduleFixedMorningCheckInRemindersMonSat();
+  }
+
+  Future<void> cancelAllScheduled() async {
+    if (!_initialized) {
+      await init();
+    }
+
+    await _plugin.cancelAll();
+  }
+
   Future<void> scheduleFixedMorningCheckInRemindersMonSat() async {
     if (!_initialized) {
       await init();
+    }
+
+    if (!await isEnabled()) {
+      return;
     }
 
     const times = <({int hour, int minute, int offsetMinutes})>[
@@ -138,6 +171,10 @@ class NotificationService {
   }) async {
     if (!_initialized) {
       await init();
+    }
+
+    if (!await isEnabled()) {
+      return;
     }
 
     final scheduled = _nextOccurrence(shiftStartTime, minutesBefore);
@@ -236,9 +273,75 @@ class NotificationService {
     return scheduled;
   }
 
+  Future<void> notifyCorrectionStatusChanges(
+    List<AttendanceCorrectionRequest> requests,
+  ) async {
+    if (!_initialized) {
+      await init();
+    }
+
+    if (!await isEnabled()) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+
+    for (final r in requests) {
+      final id = r.id;
+      if (id <= 0) continue;
+
+      final current = r.status.trim();
+      if (current.isEmpty) continue;
+
+      final key = '$_correctionStatusKeyPrefix$id';
+      final last = prefs.getString(key);
+
+      if (last == null) {
+        await prefs.setString(key, current);
+        continue;
+      }
+
+      if (last == current) {
+        continue;
+      }
+
+      await prefs.setString(key, current);
+
+      final title = 'Correction request update';
+      final body = current == 'approved'
+          ? 'Your correction request has been approved.'
+          : current == 'rejected'
+          ? 'Your correction request has been rejected.'
+          : 'Your correction request status changed to $current.';
+
+      final details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+        ),
+      );
+
+      final notificationId = 300000 + id;
+      await _appendInAppNotification(
+        id: notificationId,
+        title: title,
+        body: body,
+        createdAt: DateTime.now(),
+      );
+
+      await _plugin.show(notificationId, title, body, details);
+    }
+  }
+
   Future<void> notifyLeaveStatusChanges(List<LeaveRequest> requests) async {
     if (!_initialized) {
       await init();
+    }
+
+    if (!await isEnabled()) {
+      return;
     }
 
     final prefs = await SharedPreferences.getInstance();

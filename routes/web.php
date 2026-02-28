@@ -19,5 +19,12 @@ Route::get('/deploy/optimize', function () {
 
 Route::view('/welcome', 'welcome');
 
+Route::get('/health', static fn () => response()->json(['status' => 'ok']))
+    ->withoutMiddleware([
+        \Illuminate\Session\Middleware\StartSession::class,
+        \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        \Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class,
+    ]);
+
 Route::view('/', 'app');
 Route::view('/{any}', 'app')->where('any', '^(?!api).*$');

@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final AuthService _authService = AuthService();
+  final NotificationService _notificationService = NotificationService();
 
   void _showAutoLogoutSheet(AuthProvider auth) {
     showModalBottomSheet<void>(
@@ -98,6 +100,103 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showNotificationPreferences() async {
+    await _notificationService.init();
+    final enabled = await _notificationService.isEnabled();
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.card(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        var value = enabled;
+
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppTheme.divider(ctx),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Notifications',
+                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary(ctx),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Enable reminders for your shift and important updates.',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondary(ctx),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.card2(ctx).withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppTheme.divider(ctx)),
+                      ),
+                      child: SwitchListTile(
+                        title: Text(
+                          'Enable notifications',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary(ctx),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Text(
+                          value
+                              ? 'Reminders are active.'
+                              : 'Reminders are disabled.',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary(ctx),
+                            fontSize: 12,
+                          ),
+                        ),
+                        value: value,
+                        activeThumbColor: AppTheme.primaryBlue,
+                        onChanged: (next) async {
+                          setSheetState(() => value = next);
+                          await _notificationService.setEnabled(next);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Done'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -895,6 +994,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Icons.notifications_outlined,
                         'Notifications',
                         'Manage notification preferences',
+                        onTap: _showNotificationPreferences,
                       ),
                       Divider(
                         color: AppTheme.divider(context),

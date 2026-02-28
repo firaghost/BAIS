@@ -15,6 +15,7 @@ use App\Modules\Attendance\Services\AttendanceService;
 use App\Modules\Settings\Services\SystemSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Support\Carbon;
 
 class AttendanceController extends Controller
 {
@@ -39,6 +40,8 @@ class AttendanceController extends Controller
             $request->longitude(),
         );
 
+        $created->load(['branch', 'employee']);
+
         return response()->json(['data' => $created], 201);
     }
 
@@ -58,6 +61,7 @@ class AttendanceController extends Controller
         }
 
         $updated = $this->attendanceService->checkOut($actor);
+        $updated->load(['branch', 'employee']);
 
         return response()->json(['data' => $updated]);
     }
@@ -66,18 +70,25 @@ class AttendanceController extends Controller
     {
         $actor = request()->user();
 
-        if (!$actor) {
+        if (! $actor) {
             throw new AuthenticationException('Unauthenticated.');
         }
 
-        $today = \Illuminate\Support\Carbon::today()->toDateString();
-        $log = AttendanceLog::where('user_id', $actor->id)
+        $today = Carbon::today()->toDateString();
+
+        // Order by check_in_time DESC so we always get the most recent check-in
+        // for today. Using ->latest() was wrong — it orders by `created_at`
+        // which may differ from `check_in_time` after admin corrections.
+        $log = AttendanceLog::query()
+            ->with(['branch', 'employee'])
+            ->where('user_id', $actor->id)
             ->whereDate('log_date', $today)
-            ->latest()
+            ->orderByDesc('check_in_time')
             ->first();
 
         return response()->json(['data' => $log]);
     }
+
 
     public function history(AttendanceHistoryRequest $request): JsonResponse
     {

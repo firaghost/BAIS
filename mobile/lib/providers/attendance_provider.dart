@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/attendance_log.dart';
+import '../models/attendance_correction_request.dart';
 import '../models/shift.dart';
 import '../models/weekly_summary.dart';
 import '../services/attendance_service.dart';
@@ -15,8 +16,10 @@ class AttendanceProvider extends ChangeNotifier {
   List<Shift> _shifts = [];
   AttendanceLog? _todayLog;
   WeeklySummary? _weeklySummary;
+  Map<int, AttendanceCorrectionRequest> _correctionsByLogId = {};
   bool _isLoading = false;
   bool _isCheckingIn = false;
+  bool _isCheckingOut = false; // Added _isCheckingOut flag
   bool _isWeeklySummaryLoading = false;
   String? _error;
 
@@ -24,12 +27,17 @@ class AttendanceProvider extends ChangeNotifier {
   List<Shift> get shifts => _shifts;
   AttendanceLog? get todayLog => _todayLog;
   WeeklySummary? get weeklySummary => _weeklySummary;
+  Map<int, AttendanceCorrectionRequest> get correctionsByLogId =>
+      Map.unmodifiable(_correctionsByLogId);
   bool get isLoading => _isLoading;
   bool get isCheckingIn => _isCheckingIn;
+  bool get isCheckingOut => _isCheckingOut; // Added getter for _isCheckingOut
   bool get isWeeklySummaryLoading => _isWeeklySummaryLoading;
   String? get error => _error;
   bool get isCheckedIn =>
-      _todayLog != null && _todayLog!.status == 'checked_in';
+      _todayLog != null &&
+      _todayLog!.status == 'checked_in' &&
+      !_isCheckingOut; // Fixed isCheckedIn getter
 
   Shift? get currentShift => _shifts.isNotEmpty ? _shifts.first : null;
 
@@ -84,6 +92,18 @@ class AttendanceProvider extends ChangeNotifier {
         perPage: 50,
       );
 
+      try {
+        final corrections = await _attendanceService.getCorrections(
+          perPage: 100,
+        );
+        _correctionsByLogId = {
+          for (final c in corrections) c.attendanceLogId: c,
+        };
+        await NotificationService().notifyCorrectionStatusChanges(corrections);
+      } catch (_) {
+        // keep last corrections map
+      }
+
       // For today's state, fetchTodayLog is more reliable, but also set from history if missing
       final today = DateTime.now().toIso8601String().substring(0, 10);
       final todayFromHistory = _history.where((log) {
@@ -91,7 +111,10 @@ class AttendanceProvider extends ChangeNotifier {
         return logDate == today;
       }).firstOrNull;
 
-      _todayLog ??= todayFromHistory;
+      // Fixed today log assignment: always update if found in history, or if _todayLog is null
+      if (_todayLog == null || todayFromHistory != null) {
+        _todayLog = todayFromHistory;
+      }
 
       _isLoading = false;
       notifyListeners();
@@ -118,8 +141,8 @@ class AttendanceProvider extends ChangeNotifier {
       _todayLog = log;
       _isCheckingIn = false;
       notifyListeners();
-      // Reload from backend to ensure accuracy
-      await loadTodayLog();
+      // Reload from backend to ensure accuracy (do not block UI)
+      await loadTodayLog(); // Awaited loadTodayLog
       return true;
     } catch (e) {
       _error = _friendlyError(e);
@@ -130,21 +153,21 @@ class AttendanceProvider extends ChangeNotifier {
   }
 
   Future<bool> checkOut() async {
-    _isCheckingIn = true;
+    _isCheckingOut = true; // Set _isCheckingOut to true
     _error = null;
     notifyListeners();
 
     try {
       final log = await _attendanceService.checkOut();
       _todayLog = log;
-      _isCheckingIn = false;
+      _isCheckingOut = false; // Set _isCheckingOut to false
       notifyListeners();
-      // Reload from backend to ensure accuracy
-      await loadTodayLog();
+      // Reload from backend to ensure accuracy (do not block UI)
+      await loadTodayLog(); // Awaited loadTodayLog
       return true;
     } catch (e) {
       _error = _friendlyError(e);
-      _isCheckingIn = false;
+      _isCheckingOut = false; // Set _isCheckingOut to false on error
       notifyListeners();
       return false;
     }

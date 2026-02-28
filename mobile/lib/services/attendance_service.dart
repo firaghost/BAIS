@@ -1,4 +1,5 @@
 import '../models/attendance_log.dart';
+import '../models/attendance_correction_request.dart';
 import '../models/head_office_geofence.dart';
 import '../models/weekly_summary.dart';
 import 'api_service.dart';
@@ -90,5 +91,31 @@ class AttendanceService {
           'proposed_check_out_time': proposedCheckOutTime.toIso8601String(),
       },
     );
+  }
+
+  Future<List<AttendanceCorrectionRequest>> getCorrections({
+    int perPage = 50,
+  }) async {
+    final params = <String, String>{'per_page': perPage.toString()};
+    final result = await _api.get(
+      '/attendance/corrections',
+      queryParams: params,
+    );
+
+    final data = result['data'];
+    if (data is! Map<String, dynamic>) {
+      return [];
+    }
+
+    final list = data['data'];
+    if (list is! List) {
+      return [];
+    }
+
+    return list
+        .whereType<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .map(AttendanceCorrectionRequest.fromJson)
+        .toList();
   }
 }

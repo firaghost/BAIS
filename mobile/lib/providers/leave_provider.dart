@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/leave_request.dart';
 import '../services/leave_service.dart';
+import '../services/api_service.dart';
 import '../services/notification_service.dart';
 
 class LeaveProvider extends ChangeNotifier {
@@ -30,7 +31,7 @@ class LeaveProvider extends ChangeNotifier {
       _isBalanceLoading = false;
       notifyListeners();
     } catch (e) {
-      _error = e.toString().replaceAll(RegExp(r'^Exception:\s*'), '').trim();
+      _error = _friendlyError(e);
       _isBalanceLoading = false;
       notifyListeners();
     }
@@ -47,7 +48,7 @@ class LeaveProvider extends ChangeNotifier {
 
       await NotificationService().notifyLeaveStatusChanges(_requests);
     } catch (e) {
-      _error = e.toString();
+      _error = _friendlyError(e);
       _isLoading = false;
       notifyListeners();
     }
@@ -73,15 +74,48 @@ class LeaveProvider extends ChangeNotifier {
       _isSubmitting = false;
       notifyListeners();
 
-      // Reload data
+      // Reload data after successful submission
       await loadBalance();
       await loadRequests();
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = _friendlyError(e);
       _isSubmitting = false;
       notifyListeners();
       return false;
     }
   }
+
+  /// Extracts a user-friendly error message from any exception.
+  /// Handles ApiException bodies with validation error maps.
+  String _friendlyError(Object e) {
+    if (e is ApiException) {
+      final message = e.message.trim();
+      final errors = e.body?['errors'];
+      if (errors is Map) {
+        final first = errors.values
+            .cast<dynamic>()
+            .expand((v) => v is List ? v : [v])
+            .cast<dynamic>()
+            .map((v) => v?.toString().trim())
+            .where((v) => v != null && v.isNotEmpty)
+            .cast<String>()
+            .firstOrNull;
+        if (first != null) return first;
+      }
+      if (message.isNotEmpty) return message;
+    }
+
+    return e
+        .toString()
+        .replaceAll(RegExp(r'^Exception:\s*'), '')
+        .replaceAll(RegExp(r'^ApiException\(\d+\):\s*'), '')
+        .trim()
+        .let((s) => s.isEmpty ? 'Something went wrong. Please try again.' : s);
+  }
 }
+
+extension _StringLet on String {
+  T let<T>(T Function(String) f) => f(this);
+}
+

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/attendance_provider.dart';
 import '../models/attendance_log.dart';
+import '../models/attendance_correction_request.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_header.dart';
 
@@ -49,8 +50,13 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   Future<void> _onRefresh() async {
-    _loadHistory();
-    await Future.delayed(const Duration(milliseconds: 500));
+    final from = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+    final to = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
+    await context.read<AttendanceProvider>().loadHistory(
+      from: DateFormat('yyyy-MM-dd').format(from),
+      to: DateFormat('yyyy-MM-dd').format(to),
+      status: _selectedStatus,
+    );
   }
 
   @override
@@ -140,9 +146,12 @@ class _HistoryScreenState extends State<HistoryScreen>
                           }
 
                           final log = attendance.history[index - 1];
+                          final correction =
+                              attendance.correctionsByLogId[log.id];
                           return _HistoryCard(
                             log: log,
                             shiftEndTime: attendance.currentShift?.endTime,
+                            correction: correction,
                             onRequestCorrection: () =>
                                 _openCorrectionSheet(context, log),
                           );
@@ -486,11 +495,13 @@ class _MonthHeader extends StatelessWidget {
 class _HistoryCard extends StatelessWidget {
   final AttendanceLog log;
   final String? shiftEndTime;
+  final AttendanceCorrectionRequest? correction;
   final VoidCallback onRequestCorrection;
 
   const _HistoryCard({
     required this.log,
     this.shiftEndTime,
+    required this.correction,
     required this.onRequestCorrection,
   });
 
@@ -507,6 +518,8 @@ class _HistoryCard extends StatelessWidget {
         : '--';
 
     final isLate = log.isLate;
+
+    final correctionPill = _correctionPill(correction);
 
     final status = _resolveStatus(
       context,
@@ -546,37 +559,50 @@ class _HistoryCard extends StatelessWidget {
                 bottom: BorderSide(color: AppTheme.divider(context)),
               ),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _DateChip(date: logDate),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Regular Shift',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary(context),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    _DateChip(date: logDate),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Regular Shift',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textPrimary(context),
+                                ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            log.branchAndDepartment,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.textSecondary(context),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        log.branchName,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: AppTheme.textSecondary(context),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+                    ),
+                    Flexible(child: _StatusPill(status: status)),
+                  ],
                 ),
-                Flexible(child: _StatusPill(status: status)),
+                if (correctionPill != null) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _StatusPill(status: correctionPill),
+                  ),
+                ],
               ],
             ),
           ),
@@ -590,7 +616,7 @@ class _HistoryCard extends StatelessWidget {
                     time: checkIn,
                     icon: Icons.login,
                     iconColor: isLate ? AppTheme.warning : AppTheme.info,
-                    branchName: log.branchName,
+                    location: log.branchAndDepartment,
                   ),
                 ),
                 Container(
@@ -605,7 +631,7 @@ class _HistoryCard extends StatelessWidget {
                     time: checkOut,
                     icon: Icons.logout,
                     iconColor: AppTheme.textSecondary(context),
-                    branchName: log.branchName,
+                    location: log.branchAndDepartment,
                   ),
                 ),
               ],
@@ -617,14 +643,18 @@ class _HistoryCard extends StatelessWidget {
               height: 34,
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: onRequestCorrection,
+                onPressed: correction?.status == 'pending'
+                    ? null
+                    : onRequestCorrection,
                 icon: Icon(
                   Icons.rate_review_outlined,
                   size: 16,
                   color: AppTheme.textSecondary(context),
                 ),
                 label: Text(
-                  'Request Correction',
+                  correction?.status == 'pending'
+                      ? 'Correction Pending'
+                      : 'Request Correction',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -643,6 +673,41 @@ class _HistoryCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  _UiStatus? _correctionPill(AttendanceCorrectionRequest? correction) {
+    if (correction == null) return null;
+
+    switch (correction.status) {
+      case 'pending':
+        return const _UiStatus(
+          label: 'Correction Pending',
+          dotColor: Color(0xFF0EA5E9),
+          background: Color(0x1A0EA5E9),
+          border: Color(0x330EA5E9),
+        );
+      case 'approved':
+        return const _UiStatus(
+          label: 'Correction Approved',
+          dotColor: Color(0xFF22C55E),
+          background: Color(0x1A22C55E),
+          border: Color(0x3322C55E),
+        );
+      case 'rejected':
+        return const _UiStatus(
+          label: 'Correction Rejected',
+          dotColor: Color(0xFFEF4444),
+          background: Color(0x1AEF4444),
+          border: Color(0x33EF4444),
+        );
+      default:
+        return _UiStatus(
+          label: 'Correction ${correction.statusLabel}',
+          dotColor: const Color(0xFF64748B),
+          background: const Color(0x1A64748B),
+          border: const Color(0x3364748B),
+        );
+    }
   }
 
   _UiStatus _resolveStatus(
@@ -701,7 +766,8 @@ class _HistoryCard extends StatelessWidget {
   }
 
   String _formatTime(String dateTimeStr) {
-    final dt = DateTime.tryParse(dateTimeStr);
+    // Use parseServerDateTime to correctly handle UTC timestamps without timezone suffix
+    final dt = AttendanceLog.parseServerDateTime(dateTimeStr);
     if (dt == null) return dateTimeStr;
     return DateFormat('hh:mm a').format(dt.toLocal());
   }
@@ -819,14 +885,14 @@ class _TimeBlock extends StatelessWidget {
   final String time;
   final IconData icon;
   final Color iconColor;
-  final String branchName;
+  final String location;
 
   const _TimeBlock({
     required this.label,
     required this.time,
     required this.icon,
     required this.iconColor,
-    required this.branchName,
+    required this.location,
   });
 
   @override
@@ -859,7 +925,7 @@ class _TimeBlock extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          branchName,
+          location,
           style: TextStyle(
             fontSize: 10,
             color: AppTheme.textSecondary(context),

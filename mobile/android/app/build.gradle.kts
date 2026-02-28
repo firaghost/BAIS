@@ -5,10 +5,35 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 android {
     namespace = "com.bais.bais_attendance"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    val releaseSigningPropsFile = rootProject.file("key.properties")
+    val hasReleaseSigning = releaseSigningPropsFile.exists()
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                val props = Properties()
+                releaseSigningPropsFile.inputStream().use { props.load(it) }
+
+                val storeFilePath = (props["storeFile"] as String?)?.trim().orEmpty()
+                if (storeFilePath.isEmpty()) {
+                    throw GradleException("key.properties storeFile is missing")
+                }
+
+                storeFile = file(storeFilePath)
+                storePassword = (props["storePassword"] as String?)?.trim()
+                keyAlias = (props["keyAlias"] as String?)?.trim()
+                keyPassword = (props["keyPassword"] as String?)?.trim()
+            }
+        }
+    }
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -16,8 +41,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
     }
 
     defaultConfig {
@@ -33,9 +60,11 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

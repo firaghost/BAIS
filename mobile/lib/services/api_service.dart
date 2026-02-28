@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/api_config.dart';
@@ -46,11 +48,18 @@ class ApiService {
       '${ApiConfig.baseUrl}$endpoint',
     ).replace(queryParameters: queryParams);
 
-    final response = await http
-        .get(uri, headers: await _headers())
-        .timeout(ApiConfig.timeout);
-
-    return _handleResponse(response);
+    try {
+      final response = await http
+          .get(uri, headers: await _headers())
+          .timeout(ApiConfig.timeout);
+      return _handleResponse(response);
+    } on TimeoutException {
+      throw ApiException(0, 'Request timed out. Please try again.');
+    } on SocketException {
+      throw ApiException(0, 'No internet connection. Please try again.');
+    } on http.ClientException {
+      throw ApiException(0, 'Network error. Please try again.');
+    }
   }
 
   Future<Map<String, dynamic>> post(
@@ -59,15 +68,22 @@ class ApiService {
   }) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$endpoint');
 
-    final response = await http
-        .post(
-          uri,
-          headers: await _headers(),
-          body: body != null ? jsonEncode(body) : null,
-        )
-        .timeout(ApiConfig.timeout);
-
-    return _handleResponse(response);
+    try {
+      final response = await http
+          .post(
+            uri,
+            headers: await _headers(),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(ApiConfig.timeout);
+      return _handleResponse(response);
+    } on TimeoutException {
+      throw ApiException(0, 'Request timed out. Please try again.');
+    } on SocketException {
+      throw ApiException(0, 'No internet connection. Please try again.');
+    } on http.ClientException {
+      throw ApiException(0, 'Network error. Please try again.');
+    }
   }
 
   Future<Map<String, dynamic>> put(
@@ -76,22 +92,40 @@ class ApiService {
   }) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$endpoint');
 
-    final response = await http
-        .put(
-          uri,
-          headers: await _headers(),
-          body: body != null ? jsonEncode(body) : null,
-        )
-        .timeout(ApiConfig.timeout);
-
-    return _handleResponse(response);
+    try {
+      final response = await http
+          .put(
+            uri,
+            headers: await _headers(),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(ApiConfig.timeout);
+      return _handleResponse(response);
+    } on TimeoutException {
+      throw ApiException(0, 'Request timed out. Please try again.');
+    } on SocketException {
+      throw ApiException(0, 'No internet connection. Please try again.');
+    } on http.ClientException {
+      throw ApiException(0, 'Network error. Please try again.');
+    }
   }
 
   Map<String, dynamic> _handleResponse(http.Response response) {
     final raw = response.body.trim();
-    final Map<String, dynamic> body = raw.isEmpty
-        ? <String, dynamic>{}
-        : (jsonDecode(raw) as Map<String, dynamic>);
+
+    Map<String, dynamic> body;
+    if (raw.isEmpty) {
+      body = <String, dynamic>{};
+    } else {
+      try {
+        final decoded = jsonDecode(raw);
+        body = decoded is Map<String, dynamic>
+            ? decoded
+            : <String, dynamic>{'message': 'Invalid server response'};
+      } catch (_) {
+        body = <String, dynamic>{'message': 'Invalid server response'};
+      }
+    }
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return body;

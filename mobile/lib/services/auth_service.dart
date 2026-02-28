@@ -11,14 +11,17 @@ class AuthService {
     required String login,
     required String password,
     required String deviceIdentifier,
-    String deviceName = 'flutter_mobile',
+    required String deviceName,
   }) async {
-    final result = await _api.post('/auth/login', body: {
-      'login': login,
-      'password': password,
-      'device_identifier': deviceIdentifier,
-      'device_name': deviceName,
-    });
+    final result = await _api.post(
+      '/auth/login',
+      body: {
+        'login': login,
+        'password': password,
+        'device_identifier': deviceIdentifier,
+        'device_name': deviceName,
+      },
+    );
 
     final token = result['token'] as String;
     await _api.setToken(token);
@@ -53,10 +56,13 @@ class AuthService {
     required String currentPassword,
     required String newPassword,
   }) async {
-    await _api.post('/auth/change-password', body: {
-      'current_password': currentPassword,
-      'new_password': newPassword,
-      'new_password_confirmation': newPassword,
-    });
+    await _api.post(
+      '/auth/change-password',
+      body: {
+        'current_password': currentPassword,
+        'new_password': newPassword,
+        'new_password_confirmation': newPassword,
+      },
+    );
   }
 }
