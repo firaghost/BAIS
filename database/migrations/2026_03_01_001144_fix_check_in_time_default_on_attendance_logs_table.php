@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 return new class extends Migration
@@ -11,6 +10,14 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasTable('attendance_logs')) {
+            return;
+        }
+
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement('ALTER TABLE `attendance_logs` CHANGE `check_in_time` `check_in_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
     }
 
@@ -19,6 +26,14 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (!Schema::hasTable('attendance_logs')) {
+            return;
+        }
+
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement('ALTER TABLE `attendance_logs` CHANGE `check_in_time` `check_in_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
     }
 };

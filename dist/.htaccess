@@ -3,16 +3,6 @@
         Options -MultiViews -Indexes
     </IfModule>
 
-    <IfModule mod_mime.c>
-        AddType text/javascript .js
-        AddType text/javascript .mjs
-        AddType text/javascript .jsx
-        AddType text/css .css
-        AddType application/json .json
-        AddType application/wasm .wasm
-        AddType image/svg+xml .svg
-    </IfModule>
-
     RewriteEngine On
 
     # Handle Authorization Header

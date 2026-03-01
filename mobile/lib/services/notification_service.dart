@@ -6,6 +6,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'dart:convert';
 
 import '../models/attendance_correction_request.dart';
+import '../models/holiday.dart';
 import '../models/leave_request.dart';
 
 class NotificationService {
@@ -23,6 +24,7 @@ class NotificationService {
   static const _inAppMaxItems = 50;
   static const _notificationsEnabledKey = 'notifications_enabled_v1';
   static const _correctionStatusKeyPrefix = 'correction_status_';
+  static const _holidayNotifiedKeyPrefix = 'holiday_notified_';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -333,6 +335,50 @@ class NotificationService {
 
       await _plugin.show(notificationId, title, body, details);
     }
+  }
+
+  Future<void> notifyHolidayToday(Holiday holiday) async {
+    if (!_initialized) {
+      await init();
+    }
+
+    if (!await isEnabled()) {
+      return;
+    }
+
+    final date = holiday.holidayDate.trim();
+    if (date.isEmpty) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$_holidayNotifiedKeyPrefix$date';
+    if (prefs.getBool(key) == true) {
+      return;
+    }
+    await prefs.setBool(key, true);
+
+    final title = 'Holiday';
+    final body = '${holiday.name} is today. Attendance is disabled.';
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+    );
+
+    final notificationId = 400000 + date.hashCode.abs() % 50000;
+    await _appendInAppNotification(
+      id: notificationId,
+      title: title,
+      body: body,
+      createdAt: DateTime.now(),
+    );
+
+    await _plugin.show(notificationId, title, body, details);
   }
 
   Future<void> notifyLeaveStatusChanges(List<LeaveRequest> requests) async {

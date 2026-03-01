@@ -1,5 +1,4 @@
 ﻿import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -12,8 +11,12 @@ import '../services/attendance_service.dart';
 import '../models/attendance_log.dart';
 import '../models/shift.dart';
 import '../models/head_office_geofence.dart';
+import '../models/holiday.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/app_header.dart';
+import '../services/holiday_service.dart';
+import '../services/notification_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -31,6 +34,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Position? _currentPosition;
   HeadOfficeGeoFence? _headOffice;
   double? _distanceMeters;
+  Holiday? _todayHoliday;
+
+  bool get _isSunday => DateTime.now().weekday == DateTime.sunday;
+
+  bool get _isAttendanceBlockedForDay {
+    if (!kReleaseMode) {
+      return false;
+    }
+
+    return _isSunday || _todayHoliday != null;
+  }
+
+  String? get _attendanceBlockedReason {
+    if (!_isAttendanceBlockedForDay) {
+      return null;
+    }
+
+    if (_todayHoliday != null) {
+      return 'Today is a holiday: ${_todayHoliday!.name}';
+    }
+
+    return 'Attendance is not allowed on Sunday';
+  }
 
   double? get _radiusMeters {
     final r = _headOffice?.radiusMeters;
@@ -120,6 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _startCountdown();
     _startLocationTracking();
     _loadHeadOfficeGeoFence();
+    _loadHoliday();
   }
 
   @override
@@ -136,6 +163,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Always fetch today's log separately for accurate check-in state
     attendance.loadTodayLog();
     attendance.loadWeeklySummary();
+  }
+
+  Future<void> _loadHoliday() async {
+    try {
+      final holiday = await HolidayService().getTodayHoliday(countryCode: 'ET');
+      if (!mounted) return;
+      setState(() => _todayHoliday = holiday);
+
+      if (holiday != null) {
+        await NotificationService().notifyHolidayToday(holiday);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _todayHoliday = null);
+    }
   }
 
   Future<void> _loadHeadOfficeGeoFence() async {
@@ -169,6 +211,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       attendance.loadWeeklySummary(),
       _refreshCurrentLocation(),
       _loadHeadOfficeGeoFence(),
+      _loadHoliday(),
     ]);
   }
 
@@ -374,12 +417,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final isDevMode = !kReleaseMode;
 
-    final shift = attendance.currentShift;
-    if (!isDevMode && shift == null) {
-      _showSnack('No shift assigned. Please contact HR.', false);
+    if (!isDevMode && _isAttendanceBlockedForDay) {
+      if (!mounted) return;
+      final msg =
+          _attendanceBlockedReason ?? 'Attendance is not allowed today.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       return;
     }
 
+    final shift = attendance.currentShift;
     if (!isDevMode && shift != null && !_isWithinWorkingHours(shift)) {
       _showSnack('Check-in is only allowed during working hours.', false);
       return;
@@ -432,23 +478,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _handleCheckOut() async {
+    final isDevMode = !kReleaseMode;
+    if (!isDevMode && _isAttendanceBlockedForDay) {
+      if (!mounted) return;
+      final msg =
+          _attendanceBlockedReason ?? 'Attendance is not allowed today.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Check Out'),
-        content: const Text('Are you sure you want to check out now?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
-            child: const Text('Check Out'),
+          child: GlassSurface(
+            borderRadius: BorderRadius.circular(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Confirm Check Out',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary(context),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Are you sure you want to check out now?',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.textSecondary(context),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.error,
+                        ),
+                        child: const Text('Check Out'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
 
     if (confirmed != true || !mounted) return;
@@ -496,10 +589,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final user = auth.user;
     final shift = attendance.currentShift;
     final pill = _deriveStatusPill(attendance, shift);
-    final firstName = user?.employee?.firstName ?? user?.name ?? 'Employee';
-    final lastInitial = user?.employee?.lastName.isNotEmpty == true
-        ? '.${user!.employee!.lastName[0]}'
-        : '';
+    final displayName = user?.employee?.fullName ?? user?.name ?? 'Employee';
     final jobTitle = user?.employee?.jobTitle ?? 'Employee';
 
     return Scaffold(
@@ -587,7 +677,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '$firstName$lastInitial',
+                        displayName,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 26,
@@ -627,6 +717,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     final isCompletedToday =
                         todayLog != null && todayLog.checkOutTime != null;
                     final isDevMode = !kReleaseMode;
+                    final isBlocked = !isDevMode && _isAttendanceBlockedForDay;
 
                     if (shift == null) {
                       return Container(
@@ -692,6 +783,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ],
                             ),
                             const SizedBox(height: 14),
+                            if (isBlocked) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.card2(
+                                    context,
+                                  ).withValues(alpha: 0.55),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppTheme.divider(context),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.event_busy,
+                                      size: 16,
+                                      color: AppTheme.textSecondary(context),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _attendanceBlockedReason ??
+                                            'Attendance is not allowed today.',
+                                        style: TextStyle(
+                                          color: AppTheme.textSecondary(
+                                            context,
+                                          ),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             if (isWorking) ...[
                               Center(
                                 child: Column(
@@ -720,12 +852,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 ),
                               ),
                               const SizedBox(height: 12),
+                              if (isBlocked) ...[
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.card2(
+                                      context,
+                                    ).withValues(alpha: 0.55),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: AppTheme.divider(context),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.event_busy,
+                                        size: 16,
+                                        color: AppTheme.textSecondary(context),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _attendanceBlockedReason ??
+                                              'Attendance is not allowed today.',
+                                          style: TextStyle(
+                                            color: AppTheme.textSecondary(
+                                              context,
+                                            ),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
                             ],
                             SizedBox(
                               height: 54,
                               child: ElevatedButton.icon(
                                 onPressed:
                                     (attendance.isCheckingIn ||
+                                        isBlocked ||
                                         (!isDevMode && isCompletedToday))
                                     ? null
                                     : needsCheckOut
@@ -782,15 +957,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                     return Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: AppTheme.card(context),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: AppTheme.divider(context)),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 14,
+                            blurRadius: 12,
                             offset: const Offset(0, 6),
                           ),
                         ],
@@ -839,101 +1014,126 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 18),
-                          SizedBox(
-                            width: 176,
-                            height: 176,
-                            child: CustomPaint(
-                              painter: _CountdownPainter(
-                                progress:
-                                    _timerLabel == 'WORKED' &&
-                                        _timerDuration.inSeconds > 0
-                                    ? min(
-                                        1.0,
-                                        _timerDuration.inSeconds / 28800.0,
-                                      )
-                                    : 0.75,
-                                dividerColor: AppTheme.divider(context),
-                                activeColor: AppTheme.primaryBlue,
-                              ),
-                              child: Center(
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
                                 child: Column(
-                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       '${_timerDuration.inHours.toString().padLeft(2, '0')}:${(_timerDuration.inMinutes % 60).toString().padLeft(2, '0')}',
                                       style: TextStyle(
                                         color: AppTheme.textPrimary(context),
-                                        fontSize: 34,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: -0.5,
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.4,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 2),
                                     Text(
                                       _timerLabel,
                                       style: TextStyle(
                                         color: AppTheme.textSecondary(context),
-                                        fontSize: 10,
-                                        letterSpacing: 2.0,
+                                        fontSize: 11,
+                                        letterSpacing: 1.8,
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    if (isWorking)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.success.withValues(
-                                            alpha: 0.12,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                          border: Border.all(
-                                            color: AppTheme.success.withValues(
-                                              alpha: 0.25,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: BoxDecoration(
-                                                color: AppTheme.success,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              'ACTIVE',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: AppTheme.success,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
                                   ],
                                 ),
                               ),
-                            ),
+                              if (isWorking)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.success.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: AppTheme.success.withValues(
+                                        alpha: 0.25,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.success,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'ACTIVE',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppTheme.success,
+                                          letterSpacing: 0.6,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 14),
+                          if (isBlocked) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.card2(
+                                  context,
+                                ).withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppTheme.divider(context),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.event_busy,
+                                    size: 16,
+                                    color: AppTheme.textSecondary(context),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _attendanceBlockedReason ??
+                                          'Attendance is not allowed today.',
+                                      style: TextStyle(
+                                        color: AppTheme.textSecondary(context),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           SizedBox(
                             width: double.infinity,
                             height: 54,
                             child: ElevatedButton.icon(
                               onPressed:
                                   (attendance.isCheckingIn ||
+                                      isBlocked ||
                                       (!isDevMode && isCompletedToday))
                                   ? null
                                   : needsCheckOut
@@ -1043,9 +1243,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     width: 40,
                                     height: 40,
                                     child: Icon(
-                                      Icons.business,
+                                      Icons.location_pin,
                                       color: AppTheme.primaryBlue,
-                                      size: 32,
+                                      size: 38,
                                     ),
                                   ),
                                 Marker(
@@ -1055,19 +1255,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   ),
                                   width: 40,
                                   height: 40,
-                                  child: Center(
-                                    child: Container(
-                                      width: 14,
-                                      height: 14,
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.info,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: Colors.white,
-                                          width: 3,
-                                        ),
-                                      ),
-                                    ),
+                                  child: Icon(
+                                    Icons.location_pin,
+                                    color: AppTheme.info,
+                                    size: 38,
                                   ),
                                 ),
                               ],
@@ -1369,46 +1560,4 @@ class _SummaryCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _CountdownPainter extends CustomPainter {
-  final double progress;
-  final Color dividerColor;
-  final Color? activeColor;
-
-  _CountdownPainter({
-    required this.progress,
-    required this.dividerColor,
-    this.activeColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 8;
-
-    final bgPaint = Paint()
-      ..color = dividerColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6;
-    canvas.drawCircle(center, radius, bgPaint);
-
-    final progressPaint = Paint()
-      ..color = activeColor ?? AppTheme.primaryBlue
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -pi / 2,
-      2 * pi * progress,
-      false,
-      progressPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _CountdownPainter oldDelegate) =>
-      oldDelegate.progress != progress ||
-      oldDelegate.activeColor != activeColor;
 }

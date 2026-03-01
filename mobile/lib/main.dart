@@ -1,5 +1,8 @@
 ﻿import 'dart:async';
 
+import 'package:workmanager/workmanager.dart';
+import 'services/background_task_service.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:provider/provider.dart';
@@ -25,11 +28,24 @@ Future<void> main() async {
   unawaited(_bootstrapNotifications());
 }
 
+
 Future<void> _bootstrapNotifications() async {
   try {
     final service = NotificationService();
     await service.init();
     await service.scheduleFixedMorningCheckInRemindersMonSat();
+
+    // Initialize Workmanager
+    Workmanager().initialize(
+      callbackDispatcher,
+    );
+
+    // Register Background Task to run every 15 minutes
+    Workmanager().registerPeriodicTask(
+      "1",
+      "bais_background_sync",
+      frequency: const Duration(minutes: 15),
+    );
   } catch (_) {}
 }
 

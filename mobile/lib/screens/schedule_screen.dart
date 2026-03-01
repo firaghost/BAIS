@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import '../providers/attendance_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_header.dart';
+import '../widgets/holiday_sheet.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -124,6 +125,31 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       ),
                       Row(
                         children: [
+                          GestureDetector(
+                            onTap: () => HolidaySheet.show(context),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.event_available_rounded, size: 16, color: AppTheme.primaryBlue),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Holidays',
+                                    style: TextStyle(
+                                      color: AppTheme.primaryBlue,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
                           _navButton(
                             Icons.chevron_left,
                             _previousWeek,

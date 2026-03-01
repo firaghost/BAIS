@@ -33,6 +33,10 @@ export function useMe() {
         return Array.isArray(state.data?.roles) ? state.data.roles : [];
     }, [state.data]);
 
+    const permissions = useMemo(() => {
+        return Array.isArray(state.data?.permissions) ? state.data.permissions : [];
+    }, [state.data]);
+
     const user = useMemo(() => {
         return state.data?.user ?? null;
     }, [state.data]);
@@ -41,6 +45,7 @@ export function useMe() {
         status: state.status,
         me: state.data,
         roles,
+        permissions,
         user,
     };
 }

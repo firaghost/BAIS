@@ -6,6 +6,7 @@ import '../models/attendance_log.dart';
 import '../models/attendance_correction_request.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_header.dart';
+import '../widgets/glass_surface.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -192,129 +193,150 @@ class _HistoryScreenState extends State<HistoryScreen>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppTheme.card(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 12,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
-          ),
-          child: AnimatedBuilder(
-            animation: Listenable.merge([isSubmitting, reason]),
-            builder: (context, _) {
-              final canSubmit =
-                  reason.value.trim().length >= 3 &&
-                  isSubmitting.value == false;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 12,
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+            ),
+            child: GlassSurface(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
+              child: AnimatedBuilder(
+                animation: Listenable.merge([isSubmitting, reason]),
+                builder: (context, _) {
+                  final canSubmit =
+                      reason.value.trim().length >= 3 &&
+                      isSubmitting.value == false;
 
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.divider(context),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  Text(
-                    'Request Correction',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary(context),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Explain what needs to be corrected for this record.',
-                    style: TextStyle(color: AppTheme.textSecondary(context)),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    maxLines: 4,
-                    onChanged: (v) => reason.value = v,
-                    decoration: const InputDecoration(
-                      labelText: 'Reason',
-                      hintText: 'e.g. I forgot to check out, please update it',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: isSubmitting.value
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton(
-                    onPressed: canSubmit
-                        ? () async {
-                            if (!sheetContext.mounted) return;
-                            FocusScope.of(sheetContext).unfocus();
-                            isSubmitting.value = true;
-                            try {
-                              await parentContext
-                                  .read<AttendanceProvider>()
-                                  .requestCorrection(
-                                    attendanceLogId: log.id,
-                                    reason: controller.text.trim(),
-                                  );
-
-                              if (!sheetContext.mounted) return;
-                              Navigator.of(sheetContext).pop();
-
-                              if (!parentContext.mounted) return;
-                              ScaffoldMessenger.of(parentContext).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Correction request submitted.',
-                                  ),
-                                ),
-                              );
-                            } catch (e) {
-                              if (!parentContext.mounted) return;
-                              ScaffoldMessenger.of(parentContext).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    e
-                                        .toString()
-                                        .replaceAll(
-                                          RegExp(r'^Exception:\s*'),
-                                          '',
-                                        )
-                                        .trim(),
-                                  ),
-                                ),
-                              );
-                            } finally {
-                              if (sheetContext.mounted) {
-                                isSubmitting.value = false;
-                              }
-                            }
-                          }
-                        : null,
-                    child: isSubmitting.value
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.divider(context),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      Text(
+                        'Request Correction',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.textPrimary(context),
                             ),
-                          )
-                        : const Text('Submit Request'),
-                  ),
-                ],
-              );
-            },
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Explain what needs to be corrected for this record.',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary(context),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: controller,
+                        maxLines: 4,
+                        onChanged: (v) => reason.value = v,
+                        decoration: const InputDecoration(
+                          labelText: 'Reason',
+                          hintText:
+                              'e.g. I forgot to check out, please update it',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: isSubmitting.value
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: canSubmit
+                                  ? () async {
+                                      if (!sheetContext.mounted) return;
+                                      FocusScope.of(sheetContext).unfocus();
+                                      isSubmitting.value = true;
+                                      try {
+                                        await parentContext
+                                            .read<AttendanceProvider>()
+                                            .requestCorrection(
+                                              attendanceLogId: log.id,
+                                              reason: controller.text.trim(),
+                                            );
+
+                                        if (!sheetContext.mounted) return;
+                                        Navigator.of(sheetContext).pop();
+
+                                        if (!parentContext.mounted) return;
+                                        ScaffoldMessenger.of(
+                                          parentContext,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Correction request submitted.',
+                                            ),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (!parentContext.mounted) return;
+                                        ScaffoldMessenger.of(
+                                          parentContext,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              e
+                                                  .toString()
+                                                  .replaceAll(
+                                                    RegExp(r'^Exception:\s*'),
+                                                    '',
+                                                  )
+                                                  .trim(),
+                                            ),
+                                          ),
+                                        );
+                                      } finally {
+                                        if (sheetContext.mounted) {
+                                          isSubmitting.value = false;
+                                        }
+                                      }
+                                    }
+                                  : null,
+                              child: isSubmitting.value
+                                  ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text('Submit'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
         );
       },

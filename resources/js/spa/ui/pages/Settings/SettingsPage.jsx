@@ -1,17 +1,20 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../shared/Icon.jsx';
+import { useMe } from '../../lib/useMe.js';
 import { SecurityTab } from './tabs/SecurityTab.jsx';
 import { HeadOfficeTab } from './tabs/HeadOfficeTab.jsx';
 import { IntegrationsTab } from './tabs/IntegrationsTab.jsx';
 import { ShiftTemplatesTab } from './tabs/ShiftTemplatesTab.jsx';
 import { NotificationsTab } from './tabs/NotificationsTab.jsx';
 import { DataRetentionTab } from './tabs/DataRetentionTab.jsx';
+import { HolidaysTab } from './tabs/HolidaysTab.jsx';
 
 const TABS = [
     { id: 'security', label: 'Security Policies', icon: 'shield' },
     { id: 'head_office', label: 'Head Office Geo-Fence', icon: 'mapPin' },
     { id: 'integrations', label: 'API Integrations', icon: 'globe' },
     { id: 'shifts', label: 'Shift Templates', icon: 'schedule' },
+    { id: 'holidays', label: 'Holidays', icon: 'calendar' },
     { id: 'notifications', label: 'Notification Rules', icon: 'bell' },
     { id: 'retention', label: 'Data Retention', icon: 'fileText' },
 ];
@@ -20,6 +23,7 @@ const INFO_PANEL = {
     head_office: { title: 'Geo-Fence Enforcement', body: 'Employees outside this radius will be blocked from attendance check-in/out.' },
     integrations: { title: 'API Documentation', body: 'Review the latest v2.1 developer documentation before generating new keys.' },
     shifts: { title: 'Template Logic', body: 'Changes to global templates will apply across the organization unless overridden locally.' },
+    holidays: { title: 'Holiday Enforcement', body: 'Attendance is automatically disabled on Sundays and on active holidays. Keep dates accurate each year.' },
     retention: { title: 'Configuration Note', body: 'Retention rules update immediately. Deleting historical data is irreversible.' },
     default: { title: 'Configuration Note', body: 'Changes to global security settings may force re-authentication for all active sessions.' },
 };
@@ -30,6 +34,7 @@ function renderTabContent(tabId) {
         case 'head_office': return <HeadOfficeTab />;
         case 'integrations': return <IntegrationsTab />;
         case 'shifts': return <ShiftTemplatesTab />;
+        case 'holidays': return <HolidaysTab />;
         case 'notifications': return <NotificationsTab />;
         case 'retention': return <DataRetentionTab />;
         default: return <div className="text-center p-8 text-slate-500">This section is coming soon.</div>;
@@ -37,10 +42,53 @@ function renderTabContent(tabId) {
 }
 
 export function SettingsPage() {
-    const [activeTab, setActiveTab] = useState('security');
+    const { permissions, roles, status } = useMe();
+    const isSuperAdmin = useMemo(() => Array.isArray(roles) && roles.includes('super-admin'), [roles]);
+    const can = useMemo(() => {
+        if (isSuperAdmin) {
+            return () => true;
+        }
+
+        const set = new Set(Array.isArray(permissions) ? permissions : []);
+        return (slug) => set.has(slug);
+    }, [isSuperAdmin, permissions]);
+
+    const allowedTabs = useMemo(() => {
+        const needs = {
+            security: 'settings.manage',
+            head_office: 'settings.manage',
+            integrations: 'settings.manage',
+            shifts: 'settings.manage',
+            notifications: 'settings.manage',
+            retention: 'settings.manage',
+            holidays: 'holidays.manage',
+        };
+
+        return TABS.filter((t) => {
+            const required = needs[t.id];
+            return required ? can(required) : true;
+        });
+    }, [can]);
+
+    const [activeTab, setActiveTab] = useState(() => allowedTabs[0]?.id ?? '');
+
+    useEffect(() => {
+        if (allowedTabs.length === 0) {
+            setActiveTab('');
+            return;
+        }
+
+        setActiveTab((prev) => {
+            if (allowedTabs.some((t) => t.id === prev)) {
+                return prev;
+            }
+
+            return allowedTabs[0].id;
+        });
+    }, [allowedTabs]);
 
     const infoPanel = useMemo(() => INFO_PANEL[activeTab] ?? INFO_PANEL.default, [activeTab]);
-    const activeTabLabel = TABS.find((t) => t.id === activeTab)?.label ?? '';
+    const activeTabLabel = allowedTabs.find((t) => t.id === activeTab)?.label ?? '';
 
     return (
         <div className="h-full flex flex-col lg:flex-row gap-6">
@@ -49,7 +97,7 @@ export function SettingsPage() {
                 <div className="bg-white rounded-lg border border-slate-200 shadow-soft p-4">
                     <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Settings</h2>
                     <nav className="space-y-1 mt-3">
-                        {TABS.map((tab) => {
+                        {allowedTabs.map((tab) => {
                             const isActive = activeTab === tab.id;
                             return (
                                 <button
@@ -88,7 +136,17 @@ export function SettingsPage() {
                             Manage your {activeTabLabel.toLowerCase()} preferences
                         </p>
                     </div>
-                    <div className="p-6">{renderTabContent(activeTab)}</div>
+                    <div className="p-6">
+                        {status === 'loading' ? (
+                            <div className="text-sm text-slate-500">Loading settings...</div>
+                        ) : allowedTabs.length === 0 ? (
+                            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                You do not have permission to view system settings.
+                            </div>
+                        ) : (
+                            renderTabContent(activeTab)
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

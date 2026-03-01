@@ -9,6 +9,7 @@ use App\Modules\Attendance\Models\AttendanceLog;
 use App\Modules\Audit\Services\AuditWriterService;
 use App\Modules\Branches\Models\Branch;
 use App\Modules\Employees\Models\Employee;
+use App\Modules\Holidays\Services\HolidayService;
 use App\Modules\Shifts\Models\Shift;
 use App\Modules\Settings\Services\SystemSettingsService;
 use Illuminate\Database\DatabaseManager;
@@ -28,6 +29,7 @@ class AttendanceService
         private readonly DatabaseManager $db,
         private readonly GeoFenceValidationService $geoFence,
         private readonly SystemSettingsService $systemSettings,
+        private readonly HolidayService $holidays,
         private readonly AuditWriterService $auditWriter,
     ) {
     }
@@ -39,6 +41,22 @@ class AttendanceService
     private function isDevMode(): bool
     {
         return app()->environment('local') || (bool) config('app.debug');
+    }
+
+    private function assertAttendanceAllowedForDate(Carbon $now): void
+    {
+        if ($this->isDevMode()) {
+            return;
+        }
+
+        if ($now->isSunday()) {
+            throw new HttpException(403, 'Attendance is not allowed on Sunday.');
+        }
+
+        $holiday = $this->holidays->findActiveForDate('ET', $now->toDateString());
+        if ($holiday) {
+            throw new HttpException(403, 'Today is a holiday: ' . $holiday->name . '. Attendance is not allowed.');
+        }
     }
 
     public function checkIn(User $user, float $latitude, float $longitude): AttendanceLog
@@ -83,6 +101,7 @@ class AttendanceService
         }
 
         $now        = now();
+        $this->assertAttendanceAllowedForDate($now);
         $logDate    = $now->toDateString();
         $employeeId = (int) $employee->id;
 
@@ -145,6 +164,7 @@ class AttendanceService
     public function checkOut(User $user): AttendanceLog
     {
         $now     = now();
+        $this->assertAttendanceAllowedForDate($now);
         $logDate = $now->toDateString();
 
         return $this->db->transaction(function () use ($user, $now, $logDate): AttendanceLog {
@@ -357,7 +377,13 @@ class AttendanceService
             ->first();
 
         if (! $shift) {
-            throw new HttpException(422, 'No shift is configured for this branch.');
+            $shift = Shift::query()
+                ->orderBy('start_time')
+                ->first();
+        }
+
+        if (! $shift) {
+            throw new HttpException(422, 'No shift is configured.');
         }
 
         return $shift;

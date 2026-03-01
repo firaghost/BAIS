@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -68,15 +69,25 @@ class AppBottomNavBar extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Positioned.fill(
-                child: CustomPaint(
-                  painter: _NavCurvePainter(
-                    color: AppTheme.card(
-                      context,
-                    ).withValues(alpha: isDark ? 0.95 : 0.97),
-                    shadowColor: isDark
-                        ? Colors.black.withValues(alpha: 0.35)
-                        : Colors.black.withValues(alpha: 0.08),
-                    notchCenterX: centerX,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                    child: CustomPaint(
+                      painter: _NavCurvePainter(
+                        color: AppTheme.card(
+                          context,
+                        ).withValues(alpha: isDark ? 0.65 : 0.72),
+                        shadowColor: isDark
+                            ? Colors.black.withValues(alpha: 0.35)
+                            : Colors.black.withValues(alpha: 0.08),
+                        notchCenterX: centerX,
+                      ),
+                      child: Container(
+                        color: Colors.white.withValues(
+                          alpha: isDark ? 0.04 : 0.06,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),

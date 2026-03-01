@@ -51,7 +51,8 @@ export function SecurityTab() {
             const res = await safeGet('/api/settings/security');
             if (!active) return;
             if (!res.ok) {
-                setSecurity((prev) => ({ ...prev, status: 'error', error: res.error }));
+                const message = res.error?.message || res.error?.error || 'Failed to load security policies.';
+                setSecurity((prev) => ({ ...prev, status: 'error', error: { status: res.status, message } }));
                 return;
             }
             setSecurity((prev) => ({
@@ -113,10 +114,17 @@ export function SecurityTab() {
     }
 
     if (security.status === 'error') {
+        const isForbidden = security.error?.status === 403;
         return (
-            <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                {security.error?.message || 'Failed to load security policies.'}
-            </div>
+            isForbidden ? (
+                <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    You don’t have permission to manage security settings.
+                </div>
+            ) : (
+                <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    Failed to load security policies.
+                </div>
+            )
         );
     }
 

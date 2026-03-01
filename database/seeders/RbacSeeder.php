@@ -178,6 +178,11 @@ class RbacSeeder extends Seeder
             ['name' => 'Manage system settings', 'slug' => 'settings.manage'],
         );
 
+        $holidaysManage = Permission::query()->firstOrCreate(
+            ['slug' => 'holidays.manage'],
+            ['name' => 'Manage holidays', 'slug' => 'holidays.manage'],
+        );
+
         $roles = [
             'Super Admin',
             'HR Admin',
@@ -247,11 +252,13 @@ class RbacSeeder extends Seeder
                 $usersManage->id,
                 $deviceOverride->id,
                 $settingsManage->id,
+                $holidaysManage->id,
             ]);
         }
 
         if ($employeeRole) {
             $employeeRole->permissions()->syncWithoutDetaching([
+                $shiftsView->id,
                 $attendanceCheckIn->id,
                 $attendanceCheckOut->id,
                 $attendanceHistory->id,
@@ -268,6 +275,10 @@ class RbacSeeder extends Seeder
                 $employeesView->id,
                 $employeesManage->id,
                 $departmentsManage->id,
+                $shiftsView->id,
+                $attendanceCheckIn->id,
+                $attendanceCheckOut->id,
+                $attendanceHistory->id,
                 $attendanceManageView->id,
                 $attendanceManageUpdate->id,
                 $attendanceCorrectionsView->id,
@@ -276,6 +287,7 @@ class RbacSeeder extends Seeder
                 $shiftSchedulesView->id,
                 $shiftSchedulesManage->id,
                 $leavesApprove->id,
+                $holidaysManage->id,
             ]);
         }
 

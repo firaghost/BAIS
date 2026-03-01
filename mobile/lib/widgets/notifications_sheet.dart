@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/notifications_provider.dart';
 import '../theme/app_theme.dart';
+import './glass_surface.dart';
 
 class NotificationsSheet {
   static Future<void> show(BuildContext context) async {
@@ -15,15 +16,29 @@ class NotificationsSheet {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppTheme.card(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final maxHeight = MediaQuery.of(sheetContext).size.height * 0.78;
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: const _NotificationsSheetBody(),
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: 16,
+              top: 10,
+            ),
+            child: GlassSurface(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
+              padding: EdgeInsets.zero,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                child: const _NotificationsSheetBody(),
+              ),
+            ),
+          ),
         );
       },
     );

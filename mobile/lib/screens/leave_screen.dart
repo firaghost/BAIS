@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../providers/leave_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_header.dart';
+import '../widgets/glass_surface.dart';
 
 class LeaveScreen extends StatefulWidget {
   const LeaveScreen({super.key});
@@ -189,33 +190,33 @@ class _LeaveScreenState extends State<LeaveScreen> {
           builder: (sheetCtx, setSheetState) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
             final days = totalDays();
+            final canSubmit =
+                selectedType != null && startDate != null && endDate != null;
 
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppTheme.card(context),
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 10,
+                  bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 16,
+                ),
+                child: GlassSurface(
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(22),
                   ),
-                ),
-                child: SafeArea(
-                  top: false,
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Center(
-                          child: Container(
-                            width: 44,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: AppTheme.divider(context),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
+                        Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppTheme.divider(context),
+                            borderRadius: BorderRadius.circular(999),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -408,9 +409,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
                             onPressed: leave.isSubmitting
                                 ? null
                                 : () async {
-                                    if (selectedType == null ||
-                                        startDate == null ||
-                                        endDate == null) {
+                                    if (!canSubmit) {
                                       _showSnack(
                                         'Please fill in all required fields',
                                         false,

@@ -7,6 +7,8 @@ import '../providers/auth_provider.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_surface.dart';
+import 'package:shorebird_code_push/shorebird_code_push.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,86 +20,211 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final AuthService _authService = AuthService();
   final NotificationService _notificationService = NotificationService();
+  final _shorebirdUpdater = ShorebirdUpdater();
+
+  Future<void> _checkForUpdates() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return const Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: GlassSurface(
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 14),
+                Expanded(child: Text('Checking for updates...')),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      if (!_shorebirdUpdater.isAvailable) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Updates are not available in this build.'),
+            backgroundColor: AppTheme.warning,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      final status = await _shorebirdUpdater.checkForUpdate();
+      if (!mounted) return;
+
+      if (status == UpdateStatus.outdated) {
+        // Update is available, prompt user
+        Navigator.pop(context); // Dismiss loading dialog
+
+        await showDialog(
+          context: context,
+          builder: (ctx) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
+              ),
+              child: GlassSurface(
+                borderRadius: BorderRadius.circular(22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Update Available',
+                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary(ctx),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'A new version is available. It will be downloaded and applied on the next sub-launch.',
+                      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.textSecondary(ctx),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('OK'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+        await _shorebirdUpdater.update();
+      } else {
+        // No update available
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Your app is up to date!'),
+            backgroundColor: AppTheme.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to check for updates: $e'),
+            backgroundColor: AppTheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
 
   void _showAutoLogoutSheet(AuthProvider auth) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppTheme.card(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (ctx) {
         final current = auth.autoLogoutMinutes;
 
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppTheme.divider(ctx),
-                    borderRadius: BorderRadius.circular(2),
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+              top: 12,
+            ),
+            child: GlassSurface(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(22),
+              ),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.divider(ctx),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Auto Logout',
-                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary(ctx),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Auto Logout',
+                    style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary(ctx),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Choose how long the app can stay idle before signing you out.',
-                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textSecondary(ctx),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Choose how long the app can stay idle before signing you out.',
+                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSecondary(ctx),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                _autoLogoutOption(
-                  ctx,
-                  label: '30 minutes (default)',
-                  valueMinutes: 30,
-                  selectedMinutes: current,
-                  onSelect: () => auth.setAutoLogoutMinutes(30),
-                ),
-                _autoLogoutOption(
-                  ctx,
-                  label: '1 hour',
-                  valueMinutes: 60,
-                  selectedMinutes: current,
-                  onSelect: () => auth.setAutoLogoutMinutes(60),
-                ),
-                _autoLogoutOption(
-                  ctx,
-                  label: '8 hours',
-                  valueMinutes: 480,
-                  selectedMinutes: current,
-                  onSelect: () => auth.setAutoLogoutMinutes(480),
-                ),
-                _autoLogoutOption(
-                  ctx,
-                  label: 'Never',
-                  valueMinutes: null,
-                  selectedMinutes: current,
-                  onSelect: () => auth.setAutoLogoutMinutes(null),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Done'),
+                  const SizedBox(height: 16),
+                  _autoLogoutOption(
+                    ctx,
+                    label: '30 minutes (default)',
+                    valueMinutes: 30,
+                    selectedMinutes: current,
+                    onSelect: () => auth.setAutoLogoutMinutes(30),
                   ),
-                ),
-              ],
+                  _autoLogoutOption(
+                    ctx,
+                    label: '1 hour',
+                    valueMinutes: 60,
+                    selectedMinutes: current,
+                    onSelect: () => auth.setAutoLogoutMinutes(60),
+                  ),
+                  _autoLogoutOption(
+                    ctx,
+                    label: '8 hours',
+                    valueMinutes: 480,
+                    selectedMinutes: current,
+                    onSelect: () => auth.setAutoLogoutMinutes(480),
+                  ),
+                  _autoLogoutOption(
+                    ctx,
+                    label: 'Never',
+                    valueMinutes: null,
+                    selectedMinutes: current,
+                    onSelect: () => auth.setAutoLogoutMinutes(null),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Done'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -384,163 +511,183 @@ class _ProfileScreenState extends State<ProfileScreen> {
         bool isLoading = false;
         String? errorMsg;
         return StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            backgroundColor: AppTheme.card(ctx),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.lock_outline,
-                    color: AppTheme.primaryBlue,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Change Password',
-                  style: TextStyle(color: AppTheme.textPrimary(ctx)),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (errorMsg != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
+          builder: (ctx, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
+              ),
+              child: GlassSurface(
+                borderRadius: BorderRadius.circular(22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.lock_outline,
+                            color: AppTheme.primaryBlue,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Change Password',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary(ctx),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
-                    child: Text(
-                      errorMsg!,
-                      style: const TextStyle(
-                        color: AppTheme.error,
-                        fontSize: 13,
+                    const SizedBox(height: 14),
+                    if (errorMsg != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.error.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Text(
+                          errorMsg!,
+                          style: const TextStyle(
+                            color: AppTheme.error,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextField(
+                      controller: currentCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Current Password',
+                        prefixIcon: Icon(Icons.lock_outline),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                TextField(
-                  controller: currentCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Current Password',
-                    prefixIcon: Icon(Icons.lock_outline),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: newCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'New Password',
-                    prefixIcon: Icon(Icons.lock_reset),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm Password',
-                    prefixIcon: Icon(Icons.check_circle_outline),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(color: AppTheme.textSecondary(ctx)),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: isLoading
-                    ? null
-                    : () async {
-                        if (newCtrl.text != confirmCtrl.text) {
-                          setDialogState(
-                            () => errorMsg = 'Passwords do not match',
-                          );
-                          return;
-                        }
-                        if (newCtrl.text.length < 6) {
-                          setDialogState(
-                            () => errorMsg =
-                                'Password must be at least 6 characters',
-                          );
-                          return;
-                        }
-                        setDialogState(() {
-                          isLoading = true;
-                          errorMsg = null;
-                        });
-                        try {
-                          await _authService.changePassword(
-                            currentPassword: currentCtrl.text,
-                            newPassword: newCtrl.text,
-                          );
-                          if (ctx.mounted) {
-                            Navigator.pop(ctx);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text(
-                                    'Password updated successfully!',
-                                  ),
-                                  backgroundColor: AppTheme.success,
-                                  behavior: SnackBarBehavior.floating,
-                                  margin: const EdgeInsets.all(16),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        } catch (e) {
-                          setDialogState(() {
-                            isLoading = false;
-                            errorMsg = e.toString().replaceAll(
-                              'Exception: ',
-                              '',
-                            );
-                          });
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(80, 44),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: newCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'New Password',
+                        prefixIcon: Icon(Icons.lock_reset),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm Password',
+                        prefixIcon: Icon(Icons.check_circle_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
                         ),
-                      )
-                    : const Text('Update'),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    if (newCtrl.text != confirmCtrl.text) {
+                                      setDialogState(
+                                        () =>
+                                            errorMsg = 'Passwords do not match',
+                                      );
+                                      return;
+                                    }
+                                    if (newCtrl.text.length < 6) {
+                                      setDialogState(
+                                        () => errorMsg =
+                                            'Password must be at least 6 characters',
+                                      );
+                                      return;
+                                    }
+                                    setDialogState(() {
+                                      isLoading = true;
+                                      errorMsg = null;
+                                    });
+                                    try {
+                                      await _authService.changePassword(
+                                        currentPassword: currentCtrl.text,
+                                        newPassword: newCtrl.text,
+                                      );
+                                      if (ctx.mounted) {
+                                        Navigator.pop(ctx);
+                                      }
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: const Text(
+                                              'Password updated successfully!',
+                                            ),
+                                            backgroundColor: AppTheme.success,
+                                            behavior: SnackBarBehavior.floating,
+                                            margin: const EdgeInsets.all(16),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() {
+                                        isLoading = false;
+                                        errorMsg = e
+                                            .toString()
+                                            .replaceAll('Exception: ', '')
+                                            .trim();
+                                      });
+                                    }
+                                  },
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Update'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -559,163 +706,185 @@ class _ProfileScreenState extends State<ProfileScreen> {
         String? errorMsg;
         bool obscure = true;
         return StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            backgroundColor: AppTheme.card(ctx),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.fingerprint,
-                    color: AppTheme.primaryBlue,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Enable Biometric Login',
-                    style: TextStyle(color: AppTheme.textPrimary(ctx)),
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Verify your password to enable fingerprint/face login.',
-                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textSecondary(ctx),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (errorMsg != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      errorMsg!,
-                      style: const TextStyle(
-                        color: AppTheme.error,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                TextField(
-                  controller: loginCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Employee ID',
-                    prefixIcon: Icon(Icons.badge_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: passwordCtrl,
-                  obscureText: obscure,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        obscure
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                      ),
-                      onPressed: () => setDialogState(() => obscure = !obscure),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(
-                  'Cancel',
-                  style: TextStyle(color: AppTheme.textSecondary(ctx)),
-                ),
+          builder: (ctx, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
               ),
-              ElevatedButton(
-                onPressed: isLoading
-                    ? null
-                    : () async {
-                        if (loginCtrl.text.isEmpty ||
-                            passwordCtrl.text.isEmpty) {
-                          setDialogState(
-                            () => errorMsg = 'Please fill in all fields',
-                          );
-                          return;
-                        }
-                        setDialogState(() {
-                          isLoading = true;
-                          errorMsg = null;
-                        });
-                        final result = await auth.enableBiometric(
-                          loginId: loginCtrl.text.trim(),
-                          password: passwordCtrl.text,
-                        );
-                        if (ctx.mounted) {
-                          if (result) {
-                            Navigator.pop(ctx);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text(
-                                    'Biometric login enabled!',
-                                  ),
-                                  backgroundColor: AppTheme.success,
-                                  behavior: SnackBarBehavior.floating,
-                                  margin: const EdgeInsets.all(16),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              );
-                            }
-                          } else {
-                            setDialogState(() {
-                              isLoading = false;
-                              errorMsg =
-                                  auth.error ?? 'Failed to enable biometric';
-                            });
-                          }
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(80, 44),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
+              child: GlassSurface(
+                borderRadius: BorderRadius.circular(22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.fingerprint,
+                            color: AppTheme.primaryBlue,
+                            size: 22,
+                          ),
                         ),
-                      )
-                    : const Text('Enable'),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Enable Biometric Login',
+                            style: TextStyle(
+                              color: AppTheme.textPrimary(ctx),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Verify your password to enable fingerprint/face login.',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondary(ctx),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    if (errorMsg != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.error.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Text(
+                          errorMsg!,
+                          style: const TextStyle(
+                            color: AppTheme.error,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextField(
+                      controller: loginCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Employee ID',
+                        prefixIcon: Icon(Icons.badge_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: passwordCtrl,
+                      obscureText: obscure,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscure
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                          ),
+                          onPressed: () =>
+                              setDialogState(() => obscure = !obscure),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    if (loginCtrl.text.isEmpty ||
+                                        passwordCtrl.text.isEmpty) {
+                                      setDialogState(
+                                        () => errorMsg =
+                                            'Please fill in all fields',
+                                      );
+                                      return;
+                                    }
+                                    setDialogState(() {
+                                      isLoading = true;
+                                      errorMsg = null;
+                                    });
+                                    final result = await auth.enableBiometric(
+                                      loginId: loginCtrl.text.trim(),
+                                      password: passwordCtrl.text,
+                                    );
+                                    if (ctx.mounted) {
+                                      if (result) {
+                                        Navigator.pop(ctx);
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: const Text(
+                                                'Biometric login enabled!',
+                                              ),
+                                              backgroundColor: AppTheme.success,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              margin: const EdgeInsets.all(16),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } else {
+                                        setDialogState(() {
+                                          isLoading = false;
+                                          errorMsg =
+                                              auth.error ??
+                                              'Failed to enable biometric';
+                                        });
+                                      }
+                                    }
+                                  },
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Enable'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -1006,6 +1175,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         'Help & Support',
                         'Get assistance or report issues',
                       ),
+                      Divider(
+                        color: AppTheme.divider(context),
+                        height: 1,
+                        indent: 56,
+                      ),
+                      _settingsTile(
+                        Icons.system_update_alt_rounded,
+                        'Check for Updates',
+                        'Search for and apply new over-the-air patches',
+                        onTap: _checkForUpdates,
+                      ),
                     ],
                   ),
                 ),
@@ -1054,55 +1234,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _confirmLogout(AuthProvider auth) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.card(ctx),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppTheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.logout, color: AppTheme.error, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Sign Out',
-              style: TextStyle(color: AppTheme.textPrimary(ctx)),
-            ),
-          ],
-        ),
-        content: Text(
-          'Are you sure you want to sign out?',
-          style: TextStyle(color: AppTheme.textSecondary(ctx)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: AppTheme.textSecondary(ctx)),
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
+          child: GlassSurface(
+            borderRadius: BorderRadius.circular(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppTheme.error.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.logout,
+                        color: AppTheme.error,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Sign Out',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary(ctx),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Are you sure you want to sign out?',
+                  style: TextStyle(color: AppTheme.textSecondary(ctx)),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          auth.logout();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.error,
+                        ),
+                        child: const Text('Sign Out'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              auth.logout();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.error,
-              minimumSize: const Size(80, 44),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text('Sign Out'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

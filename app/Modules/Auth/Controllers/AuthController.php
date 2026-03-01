@@ -11,6 +11,7 @@ use App\Modules\Auth\Requests\LoginRequest;
 use App\Modules\Auth\Services\AuthService;
 use App\Modules\Auth\Services\PasswordService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
 {
@@ -29,9 +30,24 @@ class AuthController extends Controller
             throw new AuthenticationException('Unauthenticated.');
         }
 
+        $roles = $user->roles()->pluck('slug')->values();
+        $isSuperAdmin = $roles->contains('super-admin');
+        $permissions = [];
+
+        if (!$isSuperAdmin) {
+            $permissions = DB::table('permissions')
+                ->join('role_permission', 'role_permission.permission_id', '=', 'permissions.id')
+                ->join('user_role', 'user_role.role_id', '=', 'role_permission.role_id')
+                ->where('user_role.user_id', $user->id)
+                ->pluck('permissions.slug')
+                ->values()
+                ->all();
+        }
+
         return response()->json([
             'user' => $user,
-            'roles' => $user->roles()->pluck('slug')->values(),
+            'roles' => $roles,
+            'permissions' => $permissions,
         ]);
     }
 
